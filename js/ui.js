@@ -442,13 +442,101 @@ const UI = {
     const h = document.createElement('h3');
     h.textContent = 'Classe ' + cls;
     wrap.appendChild(h);
-    wrap.appendChild(this.buildScheduleGrid((d, s) => {
+    const grid = this.buildScheduleGrid((d, s) => {
       const cell = this.state.schedule[`${cls}|${d}|${s}`];
       if (!cell) return null;
       const prof = this.state.profs.find(p => p.id === cell.profId);
       return { top: cell.subj, bottom: prof ? prof.name : '?' };
-    }));
+    });
+    wrap.appendChild(grid);
+    this.attachSwap(grid, cls);
     return wrap;
+  },
+
+  attachSwap(grid, cls) {
+    grid.querySelectorAll('.cell-sched').forEach(td => {
+      td.classList.add('swappable');
+      td.addEventListener('click', () => this.handleSwapClick(td, cls, grid));
+    });
+  },
+
+  handleSwapClick(td, cls, grid) {
+    const d = +td.dataset.d, s = +td.dataset.s;
+    const key = `${cls}|${d}|${s}`;
+    const cell = this.state.schedule[key];
+
+    if (!this._swap) {
+      if (!cell) return;
+      this._swap = { cls, d, s };
+      td.classList.add('swap-selected');
+      this.highlightSwapTargets(grid, cls, d, s);
+      return;
+    }
+
+    if (this._swap.cls === cls && this._swap.d === d && this._swap.s === s) {
+      this.clearSwapHighlight();
+      this._swap = null;
+      return;
+    }
+
+    if (this._swap.cls !== cls || !td.classList.contains('swap-target')) {
+      this.clearSwapHighlight();
+      this._swap = null;
+      return;
+    }
+
+    const aKey = `${this._swap.cls}|${this._swap.d}|${this._swap.s}`;
+    const a = this.state.schedule[aKey];
+    const b = this.state.schedule[key];
+    if (b) {
+      this.state.schedule[aKey] = b;
+      this.state.schedule[key] = a;
+    } else {
+      delete this.state.schedule[aKey];
+      this.state.schedule[key] = a;
+    }
+    this._swap = null;
+    this.onChange();
+    this.renderSchedule();
+  },
+
+  highlightSwapTargets(grid, cls, d, s) {
+    const cellA = this.state.schedule[`${cls}|${d}|${s}`];
+    if (!cellA) return;
+    grid.querySelectorAll('.cell-sched').forEach(td => {
+      const d2 = +td.dataset.d, s2 = +td.dataset.s;
+      if (d2 === d && s2 === s) return;
+      const cellB = this.state.schedule[`${cls}|${d2}|${s2}`];
+      if (this.canSwap(cls, d, s, d2, s2, cellA, cellB)) {
+        td.classList.add('swap-target');
+      }
+    });
+  },
+
+  canSwap(cls, d1, s1, d2, s2, a, b) {
+    const profA = this.state.profs.find(p => p.id === a.profId);
+    if (!profA || !profA.availability?.[d2]?.[s2]) return false;
+    for (const c of this.state.config.classes) {
+      if (c === cls) continue;
+      const cell = this.state.schedule[`${c}|${d2}|${s2}`];
+      if (cell && cell.profId === profA.id) return false;
+    }
+    if (b) {
+      const profB = this.state.profs.find(p => p.id === b.profId);
+      if (!profB || !profB.availability?.[d1]?.[s1]) return false;
+      for (const c of this.state.config.classes) {
+        if (c === cls) continue;
+        const cell = this.state.schedule[`${c}|${d1}|${s1}`];
+        if (cell && cell.profId === profB.id) return false;
+      }
+    }
+    return true;
+  },
+
+  clearSwapHighlight() {
+    document.querySelectorAll('.swap-selected, .swap-target').forEach(el => {
+      el.classList.remove('swap-selected', 'swap-target');
+    });
   },
 
   buildProfGrid(profId) {
@@ -484,9 +572,9 @@ const UI = {
         if (!this.state.config.activeDays[di]) return;
         const c = cellFor(di, si);
         if (c) {
-          html += `<td class="cell-sched filled"><div class="subject">${c.top}</div><div class="prof">${c.bottom}</div></td>`;
+          html += `<td class="cell-sched filled" data-d="${di}" data-s="${si}"><div class="subject">${c.top}</div><div class="prof">${c.bottom}</div></td>`;
         } else {
-          html += `<td class="cell-sched"></td>`;
+          html += `<td class="cell-sched" data-d="${di}" data-s="${si}"></td>`;
         }
       });
       html += '</tr>';
