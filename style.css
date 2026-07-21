@@ -267,6 +267,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--input-focus); }
   padding: 2px 8px;
   font-size: 11px;
 }
+.teach-row .chip.mini.taken {
+  opacity: 0.45;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+.teach-row .chip.mini.taken:hover { border-color: transparent; }
 .teach-classes { display: flex; flex-wrap: wrap; gap: 4px; }
 
 .add-row { display: flex; gap: 6px; }

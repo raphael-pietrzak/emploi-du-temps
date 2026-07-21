@@ -332,7 +332,12 @@ const UI = {
         if (prof.subjectClasses[sj] !== undefined) {
           delete prof.subjectClasses[sj];
         } else {
-          prof.subjectClasses[sj] = [...this.state.config.classes];
+          // Par défaut : uniquement les classes non encore attribuées à un autre prof.
+          prof.subjectClasses[sj] = this.state.config.classes.filter(cl =>
+            !this.state.profs.some(op =>
+              op.id !== prof.id && op.subjectClasses?.[sj]?.includes(cl)
+            )
+          );
         }
         this.onChange();
         this.renderProfEditor();
@@ -345,12 +350,23 @@ const UI = {
         this.state.config.classes.forEach(cl => {
           const cc = document.createElement('span');
           const on = prof.subjectClasses[sj].includes(cl);
-          cc.className = 'chip mini' + (on ? ' active' : '');
+          const takenBy = this.state.profs.find(op =>
+            op.id !== prof.id && op.subjectClasses?.[sj]?.includes(cl)
+          );
+          cc.className = 'chip mini'
+            + (on ? ' active' : '')
+            + (takenBy && !on ? ' taken' : '');
           cc.textContent = cl;
+          if (takenBy) cc.title = `Déjà attribué à ${takenBy.name}`;
           cc.addEventListener('click', () => {
             const arr = prof.subjectClasses[sj];
             const i = arr.indexOf(cl);
-            if (i >= 0) arr.splice(i, 1); else arr.push(cl);
+            if (i >= 0) {
+              arr.splice(i, 1);
+            } else {
+              if (takenBy) return; // interdit d'activer une classe déjà prise
+              arr.push(cl);
+            }
             this.onChange();
             this.renderProfEditor();
           });
