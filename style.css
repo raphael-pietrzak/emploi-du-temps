@@ -235,7 +235,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--input-focus); }
 }
 
 .add-row { display: flex; gap: 6px; }
-.add-row input { flex: 1; }
+.add-row input { flex: 1; min-width: 0; }
+.add-row button { flex-shrink: 0; }
 
 /* ================= Tables (config, volumes) ================= */
 table { border-collapse: collapse; width: 100%; }
@@ -250,6 +251,7 @@ table th { color: var(--color-text-secondary); font-weight: 500; }
 
 #slots-table input[type="time"] { width: 110px; }
 #slots-table button { padding: 4px 10px; font-size: 12px; }
+#add-slot { margin-top: 12px; }
 
 .days-editor { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
 .days-editor label { color: var(--color-text-secondary); font-size: 12px; }
