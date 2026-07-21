@@ -409,6 +409,11 @@ input[type="checkbox"] {
 .view-picker { display: flex; align-items: center; gap: 8px; }
 .view-picker label { color: var(--color-text-secondary); font-size: 12px; }
 .view-picker select { width: auto; min-width: 200px; }
+.randomize-toggle {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--color-text-secondary); font-size: 12px;
+  cursor: pointer; user-select: none;
+}
 
 .status {
   padding: 10px 14px;

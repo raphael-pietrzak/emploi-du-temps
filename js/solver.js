@@ -165,20 +165,42 @@ const Solver = {
       const cands = candidatesFor(sess);
       if (cands.length === 0) return false;
 
-      cands.sort((a, b) => {
-        if (options.noGapsForStudents) {
-          const compact = (c) => {
-            let score = 0;
-            for (let s = c.slot - 1; s <= c.slot + 1; s++) {
-              if (s >= 0 && s < slotCount && busyClass[sess.cls][c.day][s]) score--;
-            }
-            return score;
-          };
-          const dc = compact(a) - compact(b);
-          if (dc !== 0) return dc;
+      if (options.randomize) {
+        // Fisher-Yates : ordre aléatoire des candidats.
+        // Le backtracking reste complet : l'ordre n'élimine aucune solution.
+        for (let i = cands.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [cands[i], cands[j]] = [cands[j], cands[i]];
         }
-        return a.slot - b.slot;
-      });
+        if (options.noGapsForStudents) {
+          // Stable : on garde le mélange comme tie-breaker.
+          cands.sort((a, b) => {
+            const compact = (c) => {
+              let score = 0;
+              for (let s = c.slot - 1; s <= c.slot + 1; s++) {
+                if (s >= 0 && s < slotCount && busyClass[sess.cls][c.day][s]) score--;
+              }
+              return score;
+            };
+            return compact(a) - compact(b);
+          });
+        }
+      } else {
+        cands.sort((a, b) => {
+          if (options.noGapsForStudents) {
+            const compact = (c) => {
+              let score = 0;
+              for (let s = c.slot - 1; s <= c.slot + 1; s++) {
+                if (s >= 0 && s < slotCount && busyClass[sess.cls][c.day][s]) score--;
+              }
+              return score;
+            };
+            const dc = compact(a) - compact(b);
+            if (dc !== 0) return dc;
+          }
+          return a.slot - b.slot;
+        });
+      }
 
       for (const c of cands) {
         busyClass[sess.cls][c.day][c.slot] = true;

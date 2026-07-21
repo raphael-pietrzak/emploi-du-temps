@@ -79,6 +79,21 @@ const UI = {
       this.state.options.noGapsForStudents = e.target.checked;
       this.onChange();
     });
+
+    // Entrée dans un champ = clic sur le bouton d'ajout associé.
+    this.bindEnterToClick('new-class', 'add-class');
+    this.bindEnterToClick('new-subject', 'add-subject');
+  },
+
+  bindEnterToClick(inputId, buttonId) {
+    const inp = document.getElementById(inputId);
+    if (!inp) return;
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById(buttonId).click();
+      }
+    });
   },
 
   renderConfig() {
@@ -222,6 +237,7 @@ const UI = {
       this.onChange();
       this.renderProfs();
     });
+    this.bindEnterToClick('new-prof', 'add-prof');
   },
 
   emptyAvailability() {
@@ -428,6 +444,12 @@ const UI = {
       }, 10);
     });
     document.getElementById('view-select').addEventListener('change', () => this.renderSchedule());
+    const rnd = document.getElementById('opt-randomize');
+    rnd.checked = !!this.state.options.randomize;
+    rnd.addEventListener('change', e => {
+      this.state.options.randomize = e.target.checked;
+      this.onChange();
+    });
   },
 
   renderSchedule() {
