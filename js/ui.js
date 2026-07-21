@@ -328,36 +328,48 @@ const UI = {
     t.innerHTML = html;
     wrap.appendChild(t);
 
-    // drag-to-paint
-    let painting = false;
-    let mode = null;   // true = set on, false = set off
+    // Drag-to-paint : on ne peint QUE tant que le bouton reste enfoncé.
+    // L'état de peinture est porté par `this._paint` pour survivre aux re-renders.
+    const self = this;
     const cells = t.querySelectorAll('.cell-avail');
 
     const apply = (cell) => {
+      if (!self._paint || !self._paint.active) return;
       const d = +cell.dataset.d, s = +cell.dataset.s;
-      if (prof.availability[d][s] === mode) return;
-      prof.availability[d][s] = mode;
-      cell.classList.toggle('on', mode);
+      if (prof.availability[d][s] === self._paint.mode) return;
+      prof.availability[d][s] = self._paint.mode;
+      cell.classList.toggle('on', self._paint.mode);
     };
 
     cells.forEach(cell => {
       cell.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
         e.preventDefault();
-        painting = true;
         const d = +cell.dataset.d, s = +cell.dataset.s;
-        mode = !prof.availability[d][s];
+        self._paint = { active: true, mode: !prof.availability[d][s], prof };
         apply(cell);
       });
-      cell.addEventListener('mouseenter', () => {
-        if (painting) apply(cell);
+      cell.addEventListener('mouseenter', e => {
+        // Sécurité : si le bouton n'est plus enfoncé (relâché hors fenêtre), on stoppe.
+        if (self._paint && self._paint.active && (e.buttons & 1) === 0) {
+          self._paint.active = false;
+          self.onChange();
+          return;
+        }
+        apply(cell);
       });
     });
-    document.addEventListener('mouseup', () => {
-      if (painting) {
-        painting = false;
-        this.onChange();
-      }
-    }, { once: true });
+
+    // Attache le mouseup global une seule fois pour toute la vie de la page.
+    if (!this._paintMouseupBound) {
+      this._paintMouseupBound = true;
+      document.addEventListener('mouseup', () => {
+        if (this._paint && this._paint.active) {
+          this._paint.active = false;
+          this.onChange();
+        }
+      });
+    }
   },
 
   // ============= SCHEDULE =============
