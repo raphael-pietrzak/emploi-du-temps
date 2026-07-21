@@ -15,21 +15,102 @@ const Solver = {
     const { config, profs, volumes, options } = state;
     const dayIdxs = config.activeDays.map((a, i) => a ? i : -1).filter(i => i >= 0);
     const slotCount = config.slots.length;
+    const totalSlotsPerClass = dayIdxs.length * slotCount;
 
-    // 1. Construire les sessions à placer
-    const sessions = [];
+    // ---------- Construction de la demande ----------
+    const demand = []; // {cls, subj, hours}
     for (const cls of config.classes) {
       for (const subj of config.subjects) {
-        const hours = volumes[`${cls}|${subj}`] || 0;
-        for (let i = 0; i < hours; i++) {
-          sessions.push({ cls, subj });
+        const h = volumes[`${cls}|${subj}`] || 0;
+        if (h > 0) demand.push({ cls, subj, hours: h });
+      }
+    }
+    if (demand.length === 0) {
+      return { ok: false, message: 'Aucun volume horaire renseigné. Va dans Configuration → Volumes horaires.' };
+    }
+
+    // ---------- Pré-vérifications ----------
+    const errors = [];
+    const eligibleFor = subj => profs.filter(p => (p.subjects || []).includes(subj));
+    const availCountFor = (prof) => {
+      if (!prof.availability) return 0;
+      let n = 0;
+      for (const d of dayIdxs) {
+        for (let s = 0; s < slotCount; s++) {
+          if (prof.availability[d]?.[s]) n++;
         }
+      }
+      return n;
+    };
+
+    // Check 1 : chaque matière demandée doit avoir au moins un prof.
+    for (const d of demand) {
+      if (eligibleFor(d.subj).length === 0) {
+        errors.push(`Aucun prof n'enseigne "${d.subj}" — mais ${d.hours}h sont demandées pour ${d.cls}. Va dans Professeurs et coche cette matière chez un prof.`);
       }
     }
 
-    // 2. Structures d'occupation
-    // busyClass[cls][day][slot] = true|false
-    // busyProf[profId][day][slot] = true|false
+    // Check 2 : pour chaque (classe, matière), il faut au moins autant de créneaux où
+    // un prof éligible est dispo que d'heures demandées.
+    const flaggedBySubject = new Set(); // matières déjà signalées par Check 2
+    for (const d of demand) {
+      const elig = eligibleFor(d.subj);
+      if (elig.length === 0) continue;
+      let cap = 0;
+      for (const dayI of dayIdxs) {
+        for (let s = 0; s < slotCount; s++) {
+          if (elig.some(p => p.availability?.[dayI]?.[s])) cap++;
+        }
+      }
+      if (cap < d.hours) {
+        errors.push(`${d.cls} · ${d.subj} : ${d.hours}h demandées mais seulement ${cap} créneau(x) où un prof éligible est dispo. Profs concernés : ${elig.map(p => p.name).join(', ') || '—'}. Ajoute des dispos à ces profs ou réduis le volume.`);
+        flaggedBySubject.add(d.subj);
+      }
+    }
+
+    // Check 3 : total d'heures d'une classe > nombre de créneaux dans la semaine.
+    for (const cls of config.classes) {
+      const total = demand.filter(d => d.cls === cls).reduce((s, d) => s + d.hours, 0);
+      if (total > totalSlotsPerClass) {
+        errors.push(`Classe ${cls} : ${total}h à caser mais seulement ${totalSlotsPerClass} créneaux dans la semaine (${dayIdxs.length} jours × ${slotCount} créneaux). Réduis les volumes ou ajoute des créneaux/jours.`);
+      }
+    }
+
+    // Check 4 : si une matière n'a qu'UN seul prof éligible, sa charge exclusive
+    // ne doit pas dépasser ses dispos totales.
+    // On ignore les matières déjà signalées par Check 2 pour éviter les doublons —
+    // cette vérif n'est utile que pour détecter la SOMME sur plusieurs matières.
+    const exclusiveByProf = {};   // total charge exclusive
+    const remainingByProf = {};   // charge exclusive non déjà couverte par Check 2
+    const subjectsByProf = {};    // matières exclusives non couvertes
+    for (const d of demand) {
+      const elig = eligibleFor(d.subj);
+      if (elig.length !== 1) continue;
+      const pid = elig[0].id;
+      exclusiveByProf[pid] = (exclusiveByProf[pid] || 0) + d.hours;
+      if (!flaggedBySubject.has(d.subj)) {
+        remainingByProf[pid] = (remainingByProf[pid] || 0) + d.hours;
+        (subjectsByProf[pid] = subjectsByProf[pid] || new Set()).add(d.subj);
+      }
+    }
+    for (const p of profs) {
+      const remaining = remainingByProf[p.id] || 0;
+      if (remaining === 0) continue;  // tout déjà signalé plus finement par Check 2
+      const avail = availCountFor(p);
+      if (remaining > avail) {
+        const subs = [...subjectsByProf[p.id]].join(', ');
+        errors.push(`${p.name} : seul prof pour ${remaining}h cumulées (${subs}) mais seulement ${avail} créneau(x) de dispo. Ajoute des dispos ou fais enseigner ces matières par un autre prof.`);
+      }
+    }
+
+    if (errors.length > 0) {
+      return {
+        ok: false,
+        message: 'Configuration infaisable — ' + errors.length + ' problème(s) :\n• ' + errors.join('\n• '),
+      };
+    }
+
+    // ---------- Backtracking ----------
     const busyClass = {};
     for (const cls of config.classes) {
       busyClass[cls] = config.days.map(() => new Array(slotCount).fill(false));
@@ -39,17 +120,25 @@ const Solver = {
       busyProf[p.id] = config.days.map(() => new Array(slotCount).fill(false));
     }
 
-    // 3. Helper: liste des placements possibles pour une session
+    const schedule = {};
+    const placed = [];
+
+    const sessions = [];
+    for (const d of demand) {
+      for (let i = 0; i < d.hours; i++) sessions.push({ cls: d.cls, subj: d.subj });
+    }
+    // Trier : les sessions les plus contraintes d'abord (peu de profs éligibles).
+    sessions.sort((a, b) => eligibleFor(a.subj).length - eligibleFor(b.subj).length);
+
     const candidatesFor = (sess) => {
-      const eligible = profs.filter(p => (p.subjects || []).includes(sess.subj));
+      const elig = eligibleFor(sess.subj);
       const list = [];
       for (const d of dayIdxs) {
         for (let s = 0; s < slotCount; s++) {
           if (busyClass[sess.cls][d][s]) continue;
-          for (const prof of eligible) {
+          for (const prof of elig) {
             if (busyProf[prof.id][d][s]) continue;
-            const avail = prof.availability?.[d]?.[s];
-            if (!avail) continue;
+            if (!prof.availability?.[d]?.[s]) continue;
             list.push({ day: d, slot: s, profId: prof.id });
           }
         }
@@ -57,43 +146,20 @@ const Solver = {
       return list;
     };
 
-    // 4. Vérification préliminaire: chaque session doit avoir au moins un candidat.
-    for (const sess of sessions) {
-      const eligible = profs.filter(p => (p.subjects || []).includes(sess.subj));
-      if (eligible.length === 0) {
-        return { ok: false, message: `Aucun prof n'enseigne "${sess.subj}" (requis pour ${sess.cls}).` };
-      }
-    }
-
-    // 5. Placement par backtracking avec MRV (choisir la session la plus contrainte)
-    const schedule = {}; // "cls|day|slot" -> {prof, subj}
-    const placed = [];
-
-    const totalSlotsAvailPerClass = dayIdxs.length * slotCount;
-    for (const cls of config.classes) {
-      const need = sessions.filter(s => s.cls === cls).length;
-      if (need > totalSlotsAvailPerClass) {
-        return { ok: false, message: `Classe ${cls}: ${need}h à caser mais seulement ${totalSlotsAvailPerClass} créneaux dispos.` };
-      }
-    }
-
-    const remaining = [...sessions];
-
-    // Bonus : trier par difficulté grossière (moins de profs eligibles = plus dur)
-    remaining.sort((a, b) => {
-      const na = profs.filter(p => (p.subjects || []).includes(a.subj)).length;
-      const nb = profs.filter(p => (p.subjects || []).includes(b.subj)).length;
-      return na - nb;
-    });
+    // Suivi de la session la plus profonde jamais atteinte, pour diagnostic si échec.
+    let deepestIdx = -1;
+    let deepestSnapshot = [];
 
     const backtrack = (idx) => {
-      if (idx >= remaining.length) return true;
-      const sess = remaining[idx];
+      if (idx > deepestIdx) {
+        deepestIdx = idx;
+        deepestSnapshot = placed.map(p => ({ ...p.sess }));
+      }
+      if (idx >= sessions.length) return true;
+      const sess = sessions[idx];
       const cands = candidatesFor(sess);
       if (cands.length === 0) return false;
 
-      // Heuristique: préférer les créneaux du matin d'abord, et si "no gaps",
-      // préférer les créneaux adjacents à ceux déjà pris pour la classe.
       cands.sort((a, b) => {
         if (options.noGapsForStudents) {
           const compact = (c) => {
@@ -117,7 +183,6 @@ const Solver = {
 
         if (backtrack(idx + 1)) return true;
 
-        // undo
         busyClass[sess.cls][c.day][c.slot] = false;
         busyProf[c.profId][c.day][c.slot] = false;
         delete schedule[`${sess.cls}|${c.day}|${c.slot}`];
@@ -127,9 +192,42 @@ const Solver = {
     };
 
     const ok = backtrack(0);
-    if (!ok) {
-      return { ok: false, message: `Impossible de placer tous les cours. Vérifie les dispos des profs et les volumes.` };
+    if (ok) {
+      return { ok: true, schedule, message: `Emploi du temps généré : ${sessions.length} créneaux placés.` };
     }
-    return { ok: true, schedule, message: `Emploi du temps généré : ${sessions.length} créneaux placés.` };
+
+    // ---------- Diagnostic post-échec ----------
+    // À la profondeur maximale atteinte, on regarde quelle session a bloqué,
+    // et on rapporte ce qui a pu être casé pour la même (classe, matière).
+    const blocking = sessions[deepestIdx];
+    const sameDone = deepestSnapshot.filter(s => s.cls === blocking.cls && s.subj === blocking.subj).length;
+    const totalSame = sessions.filter(s => s.cls === blocking.cls && s.subj === blocking.subj).length;
+    const elig = eligibleFor(blocking.subj);
+
+    // Récap par (classe, matière) : combien placés au moment du blocage
+    const summary = {};
+    for (const s of deepestSnapshot) {
+      const k = `${s.cls} · ${s.subj}`;
+      summary[k] = (summary[k] || 0) + 1;
+    }
+    const lines = [];
+    for (const d of demand) {
+      const k = `${d.cls} · ${d.subj}`;
+      const done = summary[k] || 0;
+      if (done < d.hours) {
+        lines.push(`  ${k} : ${done}/${d.hours}h casées`);
+      }
+    }
+
+    return {
+      ok: false,
+      message:
+        `Impossible de placer la ${sameDone + 1}ᵉ heure de ${blocking.subj} en ${blocking.cls} ` +
+        `(${sameDone}/${totalSame}h placées avant blocage).\n` +
+        `Profs éligibles pour ${blocking.subj} : ${elig.map(p => p.name).join(', ')}.\n` +
+        `Cause probable : leurs dispos sont déjà prises par d'autres cours de cette classe ou par les autres classes.\n\n` +
+        `État au moment du blocage — cours non complétés :\n${lines.join('\n')}\n\n` +
+        `Piste : donne plus de dispos aux profs de ${blocking.subj}, ou ajoute un prof pour cette matière, ou réduis le volume.`,
+    };
   },
 };
