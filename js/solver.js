@@ -31,7 +31,12 @@ const Solver = {
 
     // ---------- Pré-vérifications ----------
     const errors = [];
-    const eligibleFor = subj => profs.filter(p => (p.subjects || []).includes(subj));
+    // Un prof est éligible pour (matière, classe) s'il enseigne la matière
+    // ET si la classe est dans sa liste (absence de liste = toutes les classes).
+    const eligibleFor = (subj, cls) => profs.filter(p =>
+      (p.subjects || []).includes(subj) &&
+      (p.classes === undefined || p.classes.includes(cls))
+    );
     const availCountFor = (prof) => {
       if (!prof.availability) return 0;
       let n = 0;
@@ -45,7 +50,7 @@ const Solver = {
 
     // Check 1 : chaque matière demandée doit avoir au moins un prof.
     for (const d of demand) {
-      if (eligibleFor(d.subj).length === 0) {
+      if (eligibleFor(d.subj, d.cls).length === 0) {
         errors.push(`Aucun prof n'enseigne "${d.subj}" — mais ${d.hours}h sont demandées pour ${d.cls}. Va dans Professeurs et coche cette matière chez un prof.`);
       }
     }
@@ -54,7 +59,7 @@ const Solver = {
     // un prof éligible est dispo que d'heures demandées.
     const flaggedBySubject = new Set(); // matières déjà signalées par Check 2
     for (const d of demand) {
-      const elig = eligibleFor(d.subj);
+      const elig = eligibleFor(d.subj, d.cls);
       if (elig.length === 0) continue;
       let cap = 0;
       for (const dayI of dayIdxs) {
@@ -84,7 +89,7 @@ const Solver = {
     const remainingByProf = {};   // charge exclusive non déjà couverte par Check 2
     const subjectsByProf = {};    // matières exclusives non couvertes
     for (const d of demand) {
-      const elig = eligibleFor(d.subj);
+      const elig = eligibleFor(d.subj, d.cls);
       if (elig.length !== 1) continue;
       const pid = elig[0].id;
       exclusiveByProf[pid] = (exclusiveByProf[pid] || 0) + d.hours;
@@ -128,10 +133,10 @@ const Solver = {
       for (let i = 0; i < d.hours; i++) sessions.push({ cls: d.cls, subj: d.subj });
     }
     // Trier : les sessions les plus contraintes d'abord (peu de profs éligibles).
-    sessions.sort((a, b) => eligibleFor(a.subj).length - eligibleFor(b.subj).length);
+    sessions.sort((a, b) => eligibleFor(a.subj, a.cls).length - eligibleFor(b.subj, b.cls).length);
 
     const candidatesFor = (sess) => {
-      const elig = eligibleFor(sess.subj);
+      const elig = eligibleFor(sess.subj, sess.cls);
       const list = [];
       for (const d of dayIdxs) {
         for (let s = 0; s < slotCount; s++) {
@@ -202,7 +207,7 @@ const Solver = {
     const blocking = sessions[deepestIdx];
     const sameDone = deepestSnapshot.filter(s => s.cls === blocking.cls && s.subj === blocking.subj).length;
     const totalSame = sessions.filter(s => s.cls === blocking.cls && s.subj === blocking.subj).length;
-    const elig = eligibleFor(blocking.subj);
+    const elig = eligibleFor(blocking.subj, blocking.cls);
 
     // Récap par (classe, matière) : combien placés au moment du blocage
     const summary = {};

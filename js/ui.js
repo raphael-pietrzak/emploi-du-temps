@@ -50,9 +50,15 @@ const UI = {
       if (!v) return;
       if (this.state.config.classes.includes(v)) return;
       this.state.config.classes.push(v);
+      // Par défaut : chaque prof existant enseigne aussi cette nouvelle classe.
+      this.state.profs.forEach(p => {
+        if (!p.classes) p.classes = [];
+        if (!p.classes.includes(v)) p.classes.push(v);
+      });
       document.getElementById('new-class').value = '';
       this.onChange();
       this.renderConfig();
+      this.renderProfEditor();
     });
     document.getElementById('add-subject').addEventListener('click', () => {
       const v = document.getElementById('new-subject').value.trim();
@@ -85,8 +91,13 @@ const UI = {
       li.innerHTML = `${c} <button title="Supprimer">×</button>`;
       li.querySelector('button').addEventListener('click', () => {
         this.state.config.classes = this.state.config.classes.filter(x => x !== c);
+        // Nettoie les références à cette classe côté profs.
+        this.state.profs.forEach(p => {
+          if (p.classes) p.classes = p.classes.filter(x => x !== c);
+        });
         this.onChange();
         this.renderConfig();
+        this.renderProfEditor();
       });
       cl.appendChild(li);
     });
@@ -202,6 +213,7 @@ const UI = {
       const p = {
         id, name,
         subjects: [],
+        classes: [...this.state.config.classes],
         availability: this.emptyAvailability(),
       };
       this.state.profs.push(p);
@@ -288,6 +300,26 @@ const UI = {
         this.renderProfEditor();
       });
       sc.appendChild(c);
+    });
+
+    // classes toggles (par défaut: tous les niveaux)
+    if (!prof.classes) prof.classes = [...this.state.config.classes];
+    const cc = document.getElementById('prof-classes');
+    cc.innerHTML = '';
+    this.state.config.classes.forEach(cl => {
+      const c = document.createElement('span');
+      c.className = 'chip' + (prof.classes.includes(cl) ? ' active' : '');
+      c.textContent = cl;
+      c.addEventListener('click', () => {
+        if (prof.classes.includes(cl)) {
+          prof.classes = prof.classes.filter(x => x !== cl);
+        } else {
+          prof.classes.push(cl);
+        }
+        this.onChange();
+        this.renderProfEditor();
+      });
+      cc.appendChild(c);
     });
 
     this.renderAvailGrid(prof);
