@@ -1,0 +1,237 @@
+:root {
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --border: #e4e7ef;
+  --text: #1e2233;
+  --muted: #6b7189;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --available: #86efac;
+  --available-strong: #22c55e;
+  --unavailable: #f1f3f8;
+  --danger: #ef4444;
+  --accent: #eef2ff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+header {
+  background: var(--card);
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  position: sticky; top: 0; z-index: 10;
+}
+
+header h1 { font-size: 18px; margin: 0; }
+
+nav { display: flex; gap: 4px; flex: 1; }
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 500;
+}
+.tab-btn:hover { background: var(--accent); color: var(--text); }
+.tab-btn.active { background: var(--primary); color: white; }
+
+.io { display: flex; gap: 8px; }
+.io button, .import-label {
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.import-label:hover, .io button:hover { background: var(--accent); }
+
+main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+.tab { display: none; }
+.tab.active { display: block; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card h2 { margin: 0 0 12px; font-size: 15px; }
+.card h3 { margin: 20px 0 8px; font-size: 13px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }
+.hint { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.chip-list { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  background: var(--accent);
+  color: var(--primary);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.chip button {
+  background: none; border: none; cursor: pointer;
+  color: var(--primary); font-size: 14px; padding: 0;
+  opacity: 0.5;
+}
+.chip button:hover { opacity: 1; color: var(--danger); }
+
+.chip-list.toggles .chip {
+  cursor: pointer;
+  background: var(--unavailable);
+  color: var(--muted);
+}
+.chip-list.toggles .chip.active {
+  background: var(--primary);
+  color: white;
+}
+
+.add-row { display: flex; gap: 6px; }
+.add-row input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.add-row button, button.primary {
+  padding: 6px 12px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.add-row button:hover, button.primary:hover { background: var(--primary-hover); }
+
+table { border-collapse: collapse; width: 100%; }
+table th, table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 13px;
+}
+table input[type=time] {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.days-editor { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
+#days-toggles { display: flex; gap: 4px; }
+#days-toggles .day-toggle {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--unavailable);
+  color: var(--muted);
+  font-size: 13px;
+}
+#days-toggles .day-toggle.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+/* Volumes matrix */
+#volumes-container table th, #volumes-container table td { text-align: center; }
+#volumes-container table th:first-child, #volumes-container td:first-child { text-align: left; font-weight: 500; }
+.vol-input {
+  width: 48px; text-align: center;
+  padding: 4px; border: 1px solid var(--border); border-radius: 4px;
+  font-size: 13px;
+}
+
+/* Profs */
+.profs-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+.profs-side ul { list-style: none; padding: 0; margin: 0 0 12px; }
+.profs-side li {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.profs-side li:hover { background: var(--accent); }
+.profs-side li.selected { background: var(--primary); color: white; }
+.profs-side li .del { background: none; border: none; color: inherit; opacity: 0.4; cursor: pointer; }
+.profs-side li .del:hover { opacity: 1; color: var(--danger); }
+.empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+
+.prof-meta { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
+.prof-meta input { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+
+.avail-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+.avail-actions button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+/* Availability & schedule grid */
+.grid-table { border-collapse: collapse; width: 100%; user-select: none; }
+.grid-table th, .grid-table td {
+  border: 1px solid var(--border);
+  padding: 0;
+  text-align: center;
+  font-size: 12px;
+  height: 40px;
+  min-width: 90px;
+}
+.grid-table th { background: var(--accent); font-weight: 600; padding: 6px; }
+.grid-table td.slot-label { background: #fafbfe; color: var(--muted); font-size: 11px; padding: 4px 6px; min-width: 100px; }
+
+.cell-avail {
+  cursor: pointer;
+  transition: background 0.05s;
+  background: var(--unavailable);
+}
+.cell-avail.on { background: var(--available); }
+.cell-avail:hover { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* Schedule cells */
+.cell-sched {
+  padding: 4px !important;
+  font-size: 11px;
+  vertical-align: middle;
+  line-height: 1.3;
+}
+.cell-sched.filled { background: var(--accent); }
+.cell-sched .subject { font-weight: 600; color: var(--text); }
+.cell-sched .prof { color: var(--muted); font-size: 10px; }
+
+.schedule-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.view-picker { display: flex; align-items: center; gap: 8px; }
+.view-picker select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; }
+
+.status { padding: 10px; margin: 10px 0; border-radius: 6px; font-size: 13px; }
+.status.ok { background: #dcfce7; color: #166534; }
+.status.warn { background: #fef3c7; color: #92400e; }
+.status.err { background: #fee2e2; color: #991b1b; }
+
+.class-block { margin-bottom: 24px; }
+.class-block h3 { margin: 0 0 8px; text-transform: none; color: var(--text); font-size: 14px; }

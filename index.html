@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Emploi du temps</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Emploi du temps</h1>
+    <nav>
+      <button class="tab-btn active" data-tab="config">Configuration</button>
+      <button class="tab-btn" data-tab="profs">Professeurs & dispos</button>
+      <button class="tab-btn" data-tab="schedule">Emploi du temps</button>
+    </nav>
+    <div class="io">
+      <button id="export-btn">Exporter</button>
+      <label class="import-label">
+        Importer<input type="file" id="import-input" accept=".json" hidden>
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <!-- =============== CONFIG =============== -->
+    <section id="tab-config" class="tab active">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Classes</h2>
+          <ul id="classes-list" class="chip-list"></ul>
+          <div class="add-row">
+            <input id="new-class" placeholder="ex: 6e">
+            <button id="add-class">Ajouter</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Matières</h2>
+          <ul id="subjects-list" class="chip-list"></ul>
+          <div class="add-row">
+            <input id="new-subject" placeholder="ex: Maths">
+            <button id="add-subject">Ajouter</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Grille horaire</h2>
+        <p class="hint">Modifie les créneaux. Le premier peut être plus long.</p>
+        <table id="slots-table">
+          <thead><tr><th>Début</th><th>Fin</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <button id="add-slot">+ Ajouter un créneau</button>
+        <div class="days-editor">
+          <label>Jours actifs :</label>
+          <span id="days-toggles"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Volumes horaires (heures / semaine)</h2>
+        <p class="hint">Combien d'heures de chaque matière pour chaque classe. Modifie librement.</p>
+        <div id="volumes-container"></div>
+      </div>
+
+      <div class="card">
+        <h2>Options</h2>
+        <label><input type="checkbox" id="opt-no-gaps"> Éviter les trous dans la journée des élèves (souhaitable)</label>
+      </div>
+    </section>
+
+    <!-- =============== PROFS =============== -->
+    <section id="tab-profs" class="tab">
+      <div class="profs-layout">
+        <aside class="profs-side card">
+          <h2>Professeurs</h2>
+          <ul id="profs-list"></ul>
+          <div class="add-row">
+            <input id="new-prof" placeholder="Nom du prof">
+            <button id="add-prof">Ajouter</button>
+          </div>
+        </aside>
+
+        <div class="prof-detail card">
+          <div id="prof-empty" class="empty">Sélectionne un prof à gauche.</div>
+          <div id="prof-editor" hidden>
+            <h2 id="prof-name-title"></h2>
+
+            <div class="prof-meta">
+              <label>Nom : <input id="prof-name-input"></label>
+              <div>
+                <label>Matières enseignées :</label>
+                <div id="prof-subjects" class="chip-list toggles"></div>
+              </div>
+            </div>
+
+            <h3>Disponibilités</h3>
+            <p class="hint">Clique-glisse pour peindre. Vert = disponible. Le premier clic décide du mode (peindre/effacer).</p>
+            <div class="avail-actions">
+              <button id="avail-all">Tout dispo</button>
+              <button id="avail-none">Tout indispo</button>
+            </div>
+            <div id="avail-grid-wrap"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =============== SCHEDULE =============== -->
+    <section id="tab-schedule" class="tab">
+      <div class="card">
+        <div class="schedule-header">
+          <button id="generate-btn" class="primary">Générer l'emploi du temps</button>
+          <div class="view-picker">
+            <label>Vue :</label>
+            <select id="view-select">
+              <option value="all">Toutes les classes</option>
+            </select>
+          </div>
+        </div>
+        <div id="solver-status" class="status"></div>
+        <div id="schedule-container"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/storage.js"></script>
+  <script src="js/solver.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
