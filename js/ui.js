@@ -50,10 +50,12 @@ const UI = {
       if (!v) return;
       if (this.state.config.classes.includes(v)) return;
       this.state.config.classes.push(v);
-      // Par défaut : chaque prof existant enseigne aussi cette nouvelle classe.
+      // Par défaut : la nouvelle classe est ajoutée à toutes les matières que chaque prof enseigne.
       this.state.profs.forEach(p => {
-        if (!p.classes) p.classes = [];
-        if (!p.classes.includes(v)) p.classes.push(v);
+        if (!p.subjectClasses) return;
+        Object.values(p.subjectClasses).forEach(arr => {
+          if (!arr.includes(v)) arr.push(v);
+        });
       });
       document.getElementById('new-class').value = '';
       this.onChange();
@@ -108,7 +110,10 @@ const UI = {
         this.state.config.classes = this.state.config.classes.filter(x => x !== c);
         // Nettoie les références à cette classe côté profs.
         this.state.profs.forEach(p => {
-          if (p.classes) p.classes = p.classes.filter(x => x !== c);
+          if (!p.subjectClasses) return;
+          Object.keys(p.subjectClasses).forEach(sj => {
+            p.subjectClasses[sj] = p.subjectClasses[sj].filter(x => x !== c);
+          });
         });
         this.onChange();
         this.renderConfig();
@@ -126,6 +131,9 @@ const UI = {
       li.innerHTML = `${s} <button title="Supprimer">×</button>`;
       li.querySelector('button').addEventListener('click', () => {
         this.state.config.subjects = this.state.config.subjects.filter(x => x !== s);
+        this.state.profs.forEach(p => {
+          if (p.subjectClasses) delete p.subjectClasses[s];
+        });
         this.onChange();
         this.renderConfig();
         this.renderProfEditor();
@@ -227,8 +235,7 @@ const UI = {
       const id = 'p_' + Date.now();
       const p = {
         id, name,
-        subjects: [],
-        classes: [...this.state.config.classes],
+        subjectClasses: {},
         availability: this.emptyAvailability(),
       };
       this.state.profs.push(p);
@@ -299,43 +306,60 @@ const UI = {
       this.onChange();
     };
 
-    // subjects toggles
-    const sc = document.getElementById('prof-subjects');
-    sc.innerHTML = '';
-    this.state.config.subjects.forEach(sj => {
-      const c = document.createElement('span');
-      c.className = 'chip' + (prof.subjects.includes(sj) ? ' active' : '');
-      c.textContent = sj;
-      c.addEventListener('click', () => {
-        if (prof.subjects.includes(sj)) {
-          prof.subjects = prof.subjects.filter(x => x !== sj);
-        } else {
-          prof.subjects.push(sj);
-        }
-        this.onChange();
-        this.renderProfEditor();
+    // Migration : convertit l'ancien modèle (subjects + classes globales) vers subjectClasses.
+    if (!prof.subjectClasses) {
+      prof.subjectClasses = {};
+      const oldClasses = prof.classes || this.state.config.classes;
+      (prof.subjects || []).forEach(sj => {
+        prof.subjectClasses[sj] = [...oldClasses];
       });
-      sc.appendChild(c);
-    });
+      delete prof.subjects;
+      delete prof.classes;
+    }
 
-    // classes toggles (par défaut: tous les niveaux)
-    if (!prof.classes) prof.classes = [...this.state.config.classes];
-    const cc = document.getElementById('prof-classes');
-    cc.innerHTML = '';
-    this.state.config.classes.forEach(cl => {
-      const c = document.createElement('span');
-      c.className = 'chip' + (prof.classes.includes(cl) ? ' active' : '');
-      c.textContent = cl;
-      c.addEventListener('click', () => {
-        if (prof.classes.includes(cl)) {
-          prof.classes = prof.classes.filter(x => x !== cl);
+    // Rendu : une ligne par matière. Case matière + (si active) chips des classes.
+    const teachesEl = document.getElementById('prof-teaches');
+    teachesEl.innerHTML = '';
+    this.state.config.subjects.forEach(sj => {
+      const row = document.createElement('div');
+      row.className = 'teach-row';
+      const active = prof.subjectClasses[sj] !== undefined;
+
+      const subjChip = document.createElement('span');
+      subjChip.className = 'chip' + (active ? ' active' : '');
+      subjChip.textContent = sj;
+      subjChip.addEventListener('click', () => {
+        if (prof.subjectClasses[sj] !== undefined) {
+          delete prof.subjectClasses[sj];
         } else {
-          prof.classes.push(cl);
+          prof.subjectClasses[sj] = [...this.state.config.classes];
         }
         this.onChange();
         this.renderProfEditor();
       });
-      cc.appendChild(c);
+      row.appendChild(subjChip);
+
+      if (active) {
+        const classesWrap = document.createElement('span');
+        classesWrap.className = 'teach-classes';
+        this.state.config.classes.forEach(cl => {
+          const cc = document.createElement('span');
+          const on = prof.subjectClasses[sj].includes(cl);
+          cc.className = 'chip mini' + (on ? ' active' : '');
+          cc.textContent = cl;
+          cc.addEventListener('click', () => {
+            const arr = prof.subjectClasses[sj];
+            const i = arr.indexOf(cl);
+            if (i >= 0) arr.splice(i, 1); else arr.push(cl);
+            this.onChange();
+            this.renderProfEditor();
+          });
+          classesWrap.appendChild(cc);
+        });
+        row.appendChild(classesWrap);
+      }
+
+      teachesEl.appendChild(row);
     });
 
     this.renderAvailGrid(prof);

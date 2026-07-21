@@ -234,6 +234,41 @@ input:focus, select:focus, textarea:focus { border-color: var(--input-focus); }
   border-color: var(--color-border-info);
 }
 
+/* Widget matière + classes inline */
+#prof-teaches {
+  display: flex; flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+}
+.teach-row {
+  display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 6px;
+  padding: 2px 6px 2px 2px;
+  border-radius: 20px;
+  background: var(--color-background-primary, transparent);
+}
+.teach-row:has(.chip.active) {
+  background: var(--color-background-tertiary, rgba(127,127,127,0.08));
+}
+.teach-row .chip {
+  cursor: pointer;
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  border: 1.5px solid transparent;
+  justify-content: center;
+}
+.teach-row .chip:hover { border-color: var(--color-border-secondary); }
+.teach-row .chip.active {
+  background: var(--color-background-info);
+  color: var(--color-text-info);
+  border-color: var(--color-border-info);
+}
+.teach-row .chip.mini {
+  min-width: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.teach-classes { display: flex; flex-wrap: wrap; gap: 4px; }
+
 .add-row { display: flex; gap: 6px; }
 .add-row input { flex: 1; min-width: 0; }
 .add-row button { flex-shrink: 0; }

@@ -33,10 +33,17 @@ const Solver = {
     const errors = [];
     // Un prof est éligible pour (matière, classe) s'il enseigne la matière
     // ET si la classe est dans sa liste (absence de liste = toutes les classes).
-    const eligibleFor = (subj, cls) => profs.filter(p =>
-      (p.subjects || []).includes(subj) &&
-      (p.classes === undefined || p.classes.includes(cls))
-    );
+    // Un prof enseigne une (matière, classe) si :
+    // - nouveau modèle : subjectClasses[subj] contient cls, OU
+    // - ancien modèle (rétro-compat) : subjects contient subj ET (classes contient cls, ou classes est absent)
+    const teachesPair = (p, subj, cls) => {
+      if (p.subjectClasses) {
+        return (p.subjectClasses[subj] || []).includes(cls);
+      }
+      if (!(p.subjects || []).includes(subj)) return false;
+      return p.classes === undefined || p.classes.includes(cls);
+    };
+    const eligibleFor = (subj, cls) => profs.filter(p => teachesPair(p, subj, cls));
     const availCountFor = (prof) => {
       if (!prof.availability) return 0;
       let n = 0;
