@@ -316,7 +316,7 @@ const UI = {
     });
     html += '</tr></thead><tbody>';
     this.state.config.slots.forEach((sl, si) => {
-      html += `<tr><td class="slot-label">${sl.start}–${sl.end}</td>`;
+      html += `<tr><td class="slot-label">${sl.start} – ${sl.end}</td>`;
       this.state.config.days.forEach((_, di) => {
         if (!this.state.config.activeDays[di]) return;
         const on = prof.availability[di][si];
