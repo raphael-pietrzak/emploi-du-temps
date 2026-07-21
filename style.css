@@ -1,4 +1,4 @@
-:root {
+:root, [data-theme="dark"] {
   --color-background-primary: #1e1e1e;
   --color-background-secondary: #2d2d2d;
   --color-background-tertiary: #303030;
@@ -22,12 +22,48 @@
   --color-text-warning: #ffe082;
   --color-text-danger: #ef9a9a;
 
+  --button-border: rgba(222, 220, 209, 0.3);
+  --button-hover: rgba(222, 220, 209, 0.08);
+  --input-border: rgba(222, 220, 209, 0.15);
+  --input-focus: rgba(250, 249, 245, 0.5);
+
   --font-sans: "Anthropic Sans", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   --border-radius-lg: 12px;
   --border-radius-md: 8px;
   --border-radius-sm: 6px;
+}
+
+/* Thème clair "papier" — parchemin chaud, encre noire, accents teal doux. */
+[data-theme="light"] {
+  --color-background-primary: #faf9f5;
+  --color-background-secondary: #f0eee5;
+  --color-background-tertiary: #e8e6db;
+  --color-background-info: #dcece8;
+  --color-background-success: #dfe9d5;
+  --color-background-warning: #fce8b8;
+  --color-background-danger: #f5dcdc;
+
+  --color-border-primary: #a8a69c;
+  --color-border-secondary: #cfcdc4;
+  --color-border-tertiary: #e2e0d5;
+  --color-border-info: #4db6ac;
+  --color-border-success: #7bb87c;
+  --color-border-danger: #c47070;
+
+  --color-text-primary: #2b2926;
+  --color-text-secondary: #706e64;
+  --color-text-muted: #a09e94;
+  --color-text-info: #00695c;
+  --color-text-success: #2e7d32;
+  --color-text-warning: #8a5a00;
+  --color-text-danger: #a02020;
+
+  --button-border: rgba(43, 41, 38, 0.15);
+  --button-hover: rgba(43, 41, 38, 0.05);
+  --input-border: rgba(43, 41, 38, 0.15);
+  --input-focus: rgba(43, 41, 38, 0.5);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -88,7 +124,7 @@ nav {
 button, .import-label {
   appearance: none;
   background: transparent;
-  border: 0.5px solid rgba(222, 220, 209, 0.3);
+  border: 0.5px solid var(--button-border);
   border-radius: var(--border-radius-md);
   color: var(--color-text-primary);
   cursor: pointer;
@@ -98,7 +134,7 @@ button, .import-label {
   padding: 6px 14px;
   transition: background 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
 }
-button:hover, .import-label:hover { background: rgba(222, 220, 209, 0.08); }
+button:hover, .import-label:hover { background: var(--button-hover); }
 button:active { transform: scale(0.98); }
 
 button.primary {
@@ -152,7 +188,7 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 input[type="text"], input[type="number"], input[type="time"], input:not([type]), select, textarea {
   appearance: auto;
   background-color: var(--color-background-tertiary);
-  border: 0.5px solid rgba(222, 220, 209, 0.15);
+  border: 0.5px solid var(--input-border);
   border-radius: var(--border-radius-sm);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
@@ -161,7 +197,7 @@ input[type="text"], input[type="number"], input[type="time"], input:not([type]),
   outline: none;
   transition: border-color 0.15s ease;
 }
-input:focus, select:focus, textarea:focus { border-color: rgba(250, 249, 245, 0.5); }
+input:focus, select:focus, textarea:focus { border-color: var(--input-focus); }
 
 /* ================= Chips ================= */
 .chip-list { list-style: none; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
