@@ -184,6 +184,17 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+/* Config : Grille horaire (colonne large auto) + colonne latérale Classes/Matières/Options */
+.config-top {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.config-side { display: flex; flex-direction: column; gap: 12px; }
+.config-top > .card { margin-bottom: 0; }
+.config-side .card { margin-bottom: 0; }
+
 /* ================= Inputs ================= */
 input[type="text"], input[type="number"], input[type="time"], input:not([type]), select, textarea {
   appearance: auto;
@@ -290,8 +301,40 @@ table th, table td {
 }
 table th { color: var(--color-text-secondary); font-weight: 500; }
 
-#slots-table input[type="time"] { width: 110px; }
-#slots-table button { padding: 4px 10px; font-size: 12px; }
+#slots-table {
+  width: auto;                    /* pas d'étirement pleine largeur */
+  border-collapse: collapse;
+}
+#slots-table th, #slots-table td {
+  padding: 4px 12px 4px 0;
+  border-bottom: 0.5px solid var(--color-border-tertiary);
+}
+#slots-table th {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  text-align: left;
+}
+#slots-table td:last-child { padding-right: 0; }
+#slots-table input[type="time"] {
+  width: 110px;
+  font-variant-numeric: tabular-nums;
+}
+#slots-table button {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  border-color: transparent;
+  background: transparent;
+}
+#slots-table tr:hover button {
+  color: var(--color-text-secondary);
+  border-color: var(--button-border);
+}
+#slots-table button:hover {
+  color: var(--color-text-danger);
+  background: var(--button-hover);
+}
 #add-slot { margin-top: 12px; }
 
 .days-editor { margin-top: 14px; display: flex; align-items: center; gap: 10px; }

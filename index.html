@@ -26,37 +26,44 @@
   <main>
     <!-- =============== CONFIG =============== -->
     <section id="tab-config" class="tab active">
-      <div class="grid-2">
+      <div class="config-top">
         <div class="card">
-          <h2>Classes</h2>
-          <ul id="classes-list" class="chip-list"></ul>
-          <div class="add-row">
-            <input id="new-class" placeholder="ex: 6e">
-            <button id="add-class">Ajouter</button>
+          <h2>Grille horaire</h2>
+          <p class="hint">Modifie les créneaux.</p>
+          <table id="slots-table">
+            <thead><tr><th>Début</th><th>Fin</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <button id="add-slot">+ Ajouter un créneau</button>
+          <div class="days-editor">
+            <label>Jours actifs :</label>
+            <span id="days-toggles"></span>
           </div>
         </div>
 
-        <div class="card">
-          <h2>Matières</h2>
-          <ul id="subjects-list" class="chip-list"></ul>
-          <div class="add-row">
-            <input id="new-subject" placeholder="ex: Maths">
-            <button id="add-subject">Ajouter</button>
+        <div class="config-side">
+          <div class="card">
+            <h2>Classes</h2>
+            <ul id="classes-list" class="chip-list"></ul>
+            <div class="add-row">
+              <input id="new-class" placeholder="ex: 6e">
+              <button id="add-class">Ajouter</button>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div class="card">
-        <h2>Grille horaire</h2>
-        <p class="hint">Modifie les créneaux.</p>
-        <table id="slots-table">
-          <thead><tr><th>Début</th><th>Fin</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <button id="add-slot">+ Ajouter un créneau</button>
-        <div class="days-editor">
-          <label>Jours actifs :</label>
-          <span id="days-toggles"></span>
+          <div class="card">
+            <h2>Matières</h2>
+            <ul id="subjects-list" class="chip-list"></ul>
+            <div class="add-row">
+              <input id="new-subject" placeholder="ex: Maths">
+              <button id="add-subject">Ajouter</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Options</h2>
+            <label><input type="checkbox" id="opt-no-gaps"> Éviter les trous dans la journée des élèves</label>
+          </div>
         </div>
       </div>
 
@@ -64,11 +71,6 @@
         <h2>Volumes horaires (heures / semaine)</h2>
         <p class="hint">Combien d'heures de chaque matière pour chaque classe.</p>
         <div id="volumes-container"></div>
-      </div>
-
-      <div class="card">
-        <h2>Options</h2>
-        <label><input type="checkbox" id="opt-no-gaps"> Éviter les trous dans la journée des élèves</label>
       </div>
     </section>
 
