@@ -131,6 +131,11 @@ const Solver = {
       return p.classes === undefined || p.classes.includes(cls);
     };
     const eligibleFor = (subj, cls) => profs.filter(p => teachesPair(p, subj, cls));
+    // Temps déjà consommé par les épingles pour chaque prof — à défalquer de sa dispo effective.
+    const pinnedProfCount = {};
+    for (const pin of (constraints.pins || [])) {
+      if (pin.profId) pinnedProfCount[pin.profId] = (pinnedProfCount[pin.profId] || 0) + 1;
+    }
     const availCountFor = (prof) => {
       if (!prof.availability) return 0;
       let n = 0;
@@ -139,7 +144,7 @@ const Solver = {
           if (prof.availability[d]?.[s]) n++;
         }
       }
-      return n;
+      return n - (pinnedProfCount[prof.id] || 0);
     };
 
     // Check 1 : chaque matière demandée doit avoir au moins un prof.
@@ -266,7 +271,15 @@ const Solver = {
     let deepestIdx = -1;
     let deepestSnapshot = [];
 
+    // Budget d'itérations : si un pré-check laisse passer une infaisabilité subtile
+    // (ex: contention cumulée entre plusieurs profs / classes), on abandonne au lieu de figer la page.
+    let iterCount = 0;
+    const MAX_ITER = 500000;
+    let aborted = false;
+
     const backtrack = (idx) => {
+      if (aborted) return false;
+      if (++iterCount > MAX_ITER) { aborted = true; return false; }
       if (idx > deepestIdx) {
         deepestIdx = idx;
         deepestSnapshot = placed.map(p => ({ ...p.sess }));
@@ -333,7 +346,18 @@ const Solver = {
 
     const ok = backtrack(0);
     if (ok) {
-      return { ok: true, schedule, message: `Emploi du temps généré : ${sessions.length} créneaux placés.` };
+      const nPins = Object.keys(pinnedSchedule).length;
+      const suffix = nPins > 0 ? ` (${nPins} épinglé(s))` : '';
+      return { ok: true, schedule, message: `Emploi du temps généré : ${sessions.length + nPins} créneaux placés${suffix}.` };
+    }
+
+    if (aborted) {
+      return {
+        ok: false,
+        message:
+          `Recherche interrompue après ${MAX_ITER.toLocaleString('fr')} itérations : la configuration semble infaisable ou trop contrainte.\n` +
+          `Vérifie les épingles (elles bloquent des créneaux) et les profs uniques sur plusieurs matières.`,
+      };
     }
 
     // ---------- Diagnostic post-échec ----------
