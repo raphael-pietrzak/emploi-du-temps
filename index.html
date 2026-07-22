@@ -11,6 +11,7 @@
     <nav>
       <button class="tab-btn active" data-tab="config">Configuration</button>
       <button class="tab-btn" data-tab="profs">Professeurs & dispos</button>
+      <button class="tab-btn" data-tab="constraints">Contraintes</button>
       <button class="tab-btn" data-tab="schedule">Emploi du temps</button>
     </nav>
     <div class="io">
@@ -109,6 +110,29 @@
       </div>
     </section>
 
+    <!-- =============== CONSTRAINTS =============== -->
+    <section id="tab-constraints" class="tab">
+      <div class="card">
+        <h2>Épingles (créneaux fixés)</h2>
+        <p class="hint">Verrouille un cours à un créneau précis. Utile pour le sport (toutes les classes ensemble), un DST commun, ou toute matière à horaire imposé.</p>
+        <div class="pin-form">
+          <select id="pin-subj"></select>
+          <div id="pin-classes" class="pin-classes"></div>
+          <select id="pin-day"></select>
+          <select id="pin-slot"></select>
+          <select id="pin-prof"></select>
+          <button id="add-pin">Épingler</button>
+        </div>
+        <ul id="pins-list" class="pins-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Préférences horaires par matière</h2>
+        <p class="hint">Biaise le solveur : « fin de journée » pour les matières où les élèves sont moins concentrés (sport, chant, arts).</p>
+        <div id="time-pref-container"></div>
+      </div>
+    </section>
+
     <!-- =============== SCHEDULE =============== -->
     <section id="tab-schedule" class="tab">
       <div class="card">
@@ -129,7 +153,6 @@
       </div>
     </section>
   </main>
-et 
   <script src="js/storage.js"></script>
   <script src="js/solver.js"></script>
   <script src="js/ui.js"></script>

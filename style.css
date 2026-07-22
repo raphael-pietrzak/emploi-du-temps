@@ -480,6 +480,80 @@ input[type="checkbox"] {
   border-color: var(--color-border-danger);
 }
 
+/* ================= Constraints ================= */
+.pin-form {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-bottom: 12px;
+}
+.pin-form select { min-width: 120px; }
+.pin-classes {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding: 4px 6px;
+  border: 0.5px dashed var(--color-border-secondary);
+  border-radius: var(--border-radius-sm);
+}
+.pin-classes .chip {
+  cursor: pointer;
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  border: 1.5px solid transparent;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.pin-classes .chip:hover { border-color: var(--color-border-secondary); }
+.pin-classes .chip.active {
+  background: var(--color-background-info);
+  color: var(--color-text-info);
+  border-color: var(--color-border-info);
+}
+.pins-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.pins-list li {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 10px;
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-sm);
+  font-size: 12px;
+}
+.pins-list li button {
+  background: none; border: none; padding: 0 4px;
+  color: var(--color-text-muted); font-size: 14px; cursor: pointer;
+}
+.pins-list li button:hover { color: var(--color-text-danger); background: none; }
+
+.timepref-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid var(--color-border-tertiary);
+}
+.timepref-row:last-child { border-bottom: none; }
+.timepref-name { flex: 0 0 140px; font-weight: 500; font-size: 13px; }
+.timepref-choices { display: flex; gap: 6px; }
+.timepref-choice {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+}
+.timepref-choice input[type=radio] { display: none; }
+.timepref-choice.active {
+  background: var(--color-background-info);
+  color: var(--color-text-info);
+  border-color: var(--color-border-info);
+}
+
+/* Cellule épinglée dans l'emploi du temps */
+.cell-sched.pinned {
+  background: var(--color-background-warning) !important;
+  border-color: var(--color-border-danger, var(--color-border-info)) !important;
+  cursor: default;
+}
+.cell-sched.pinned .prof { color: var(--color-text-warning, var(--color-text-info)); }
+.cell-sched.pinned .subject::before { content: '● '; color: var(--color-text-warning); }
+
 .class-block { margin-bottom: 24px; }
 .class-block h3 {
   margin: 0 0 10px;

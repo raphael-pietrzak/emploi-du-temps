@@ -13,19 +13,106 @@
 const Solver = {
   solve(state) {
     const { config, profs, volumes, options } = state;
+    const constraints = state.constraints || { pins: [], timePref: {} };
     const dayIdxs = config.activeDays.map((a, i) => a ? i : -1).filter(i => i >= 0);
     const slotCount = config.slots.length;
     const totalSlotsPerClass = dayIdxs.length * slotCount;
 
-    // ---------- Construction de la demande ----------
-    const demand = []; // {cls, subj, hours}
+    // ---------- Construction de la demande (volumes bruts) ----------
+    // On les stocke dans un dict pour pouvoir décrémenter avec les épingles.
+    const demandMap = {}; // "cls|subj" -> heures restantes
     for (const cls of config.classes) {
       for (const subj of config.subjects) {
         const h = volumes[`${cls}|${subj}`] || 0;
+        if (h > 0) demandMap[`${cls}|${subj}`] = h;
+      }
+    }
+
+    // ---------- Application des épingles ----------
+    // Chaque épingle : (subj, classes[], day, slot, profId?) → placée en dur.
+    // Effets : décrémente demandMap, marque busy, écrit dans schedule.
+    // Erreurs claires si : classe/matière/prof inconnus, jour désactivé, volume
+    // déjà épuisé, conflit prof, conflit classe, prof indispo.
+    const pinnedSchedule = {};
+    const pinnedBusyClass = {}; // "cls|d|s" -> true
+    const pinnedBusyProf = {};  // "profId|d|s" -> true
+    const pinErrors = [];
+
+    for (const pin of (constraints.pins || [])) {
+      const label = `Épingle ${pin.subj} · ${(pin.classes || []).join('+')} · ${config.days[pin.day]} #${pin.slot + 1}`;
+      if (!config.subjects.includes(pin.subj)) { pinErrors.push(`${label} : matière inconnue.`); continue; }
+      if (!config.activeDays[pin.day]) { pinErrors.push(`${label} : jour désactivé.`); continue; }
+      if (pin.slot < 0 || pin.slot >= slotCount) { pinErrors.push(`${label} : créneau invalide.`); continue; }
+      let bad = false;
+      for (const cls of pin.classes) {
+        if (!config.classes.includes(cls)) { pinErrors.push(`${label} : classe ${cls} inconnue.`); bad = true; }
+      }
+      if (bad) continue;
+
+      // Volume dispo dans chaque classe ?
+      for (const cls of pin.classes) {
+        const k = `${cls}|${pin.subj}`;
+        if ((demandMap[k] || 0) < 1) {
+          pinErrors.push(`${label} : ${cls} n'a plus d'heure de ${pin.subj} à placer (volume horaire épuisé ou nul).`);
+          bad = true;
+        }
+      }
+      if (bad) continue;
+
+      // Prof : si spécifié, vérifie qu'il enseigne la matière pour chaque classe.
+      let profId = pin.profId || null;
+      if (profId) {
+        const prof = profs.find(p => p.id === profId);
+        if (!prof) { pinErrors.push(`${label} : prof inconnu.`); continue; }
+        for (const cls of pin.classes) {
+          if (!(prof.subjectClasses?.[pin.subj] || []).includes(cls)) {
+            pinErrors.push(`${label} : ${prof.name} n'enseigne pas ${pin.subj} en ${cls}.`);
+            bad = true;
+          }
+        }
+        if (bad) continue;
+        if (!prof.availability?.[pin.day]?.[pin.slot]) {
+          pinErrors.push(`${label} : ${prof.name} est indisponible sur ce créneau.`);
+          continue;
+        }
+        if (pinnedBusyProf[`${profId}|${pin.day}|${pin.slot}`]) {
+          pinErrors.push(`${label} : ${prof.name} est déjà pris par une autre épingle sur ce créneau.`);
+          continue;
+        }
+      }
+
+      // Conflits classe
+      for (const cls of pin.classes) {
+        if (pinnedBusyClass[`${cls}|${pin.day}|${pin.slot}`]) {
+          pinErrors.push(`${label} : ${cls} déjà occupée par une autre épingle sur ce créneau.`);
+          bad = true;
+        }
+      }
+      if (bad) continue;
+
+      // Appliquer.
+      for (const cls of pin.classes) {
+        demandMap[`${cls}|${pin.subj}`] -= 1;
+        if (demandMap[`${cls}|${pin.subj}`] === 0) delete demandMap[`${cls}|${pin.subj}`];
+        pinnedBusyClass[`${cls}|${pin.day}|${pin.slot}`] = true;
+        pinnedSchedule[`${cls}|${pin.day}|${pin.slot}`] = { profId, subj: pin.subj, pinned: true };
+      }
+      if (profId) pinnedBusyProf[`${profId}|${pin.day}|${pin.slot}`] = true;
+    }
+
+    if (pinErrors.length > 0) {
+      return { ok: false, message: 'Épingles invalides :\n• ' + pinErrors.join('\n• ') };
+    }
+
+    // Reconstitution de la demande post-épingles.
+    const demand = [];
+    for (const cls of config.classes) {
+      for (const subj of config.subjects) {
+        const h = demandMap[`${cls}|${subj}`] || 0;
         if (h > 0) demand.push({ cls, subj, hours: h });
       }
     }
-    if (demand.length === 0) {
+    if (demand.length === 0 && Object.keys(pinnedSchedule).length === 0) {
       return { ok: false, message: 'Aucun volume horaire renseigné. Va dans Configuration → Volumes horaires.' };
     }
 
@@ -133,7 +220,24 @@ const Solver = {
     }
 
     const schedule = {};
+    for (const k of Object.keys(pinnedSchedule)) {
+      schedule[k] = pinnedSchedule[k];
+      const [cls, d, s] = k.split('|');
+      busyClass[cls][+d][+s] = true;
+      const profId = pinnedSchedule[k].profId;
+      if (profId) busyProf[profId][+d][+s] = true;
+    }
     const placed = [];
+
+    // Préférence horaire par matière : biaise l'ordre des candidats.
+    // early → petit slot d'abord ; late → grand slot d'abord ; any → neutre.
+    const timePref = constraints.timePref || {};
+    const timeScore = (subj, slot) => {
+      const pref = timePref[subj];
+      if (pref === 'early') return slot;              // + petit = mieux
+      if (pref === 'late')  return -slot;             // + grand = mieux (donc score négatif)
+      return 0;
+    };
 
     const sessions = [];
     for (const d of demand) {
@@ -205,6 +309,8 @@ const Solver = {
             const dc = compact(a) - compact(b);
             if (dc !== 0) return dc;
           }
+          const dt = timeScore(sess.subj, a.slot) - timeScore(sess.subj, b.slot);
+          if (dt !== 0) return dt;
           return a.slot - b.slot;
         });
       }

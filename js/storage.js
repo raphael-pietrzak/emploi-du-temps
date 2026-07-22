@@ -61,6 +61,10 @@ const Storage = {
       profs: [],
       volumes: {},  // "classe|matiere" -> heures
       schedule: null,
+      constraints: {
+        pins: [],       // { id, subj, classes:[..], day, slot, profId?: null }
+        timePref: {},   // { [subj]: 'early' | 'late' | 'any' }
+      },
       options: { noGapsForStudents: false },
     };
   },
