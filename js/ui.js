@@ -211,25 +211,55 @@ const UI = {
       return;
     }
     const t = document.createElement('table');
-    let head = '<thead><tr><th>Matière</th>';
-    classes.forEach(cl => head += `<th>${cl}</th>`);
-    head += '</tr></thead><tbody>';
+    t.className = 'volumes-table';
+    let html = '<thead><tr><th class="subj-col">Matière</th>';
+    classes.forEach(cl => html += `<th>${cl}</th>`);
+    html += '<th class="total-col">Total</th></tr></thead><tbody>';
+    const colTotals = classes.map(() => 0);
     subjects.forEach(sj => {
-      head += `<tr><td>${sj}</td>`;
-      classes.forEach(cl => {
+      html += `<tr><td class="subj-col">${sj}</td>`;
+      let rowTotal = 0;
+      classes.forEach((cl, i) => {
         const key = `${cl}|${sj}`;
         const v = this.state.volumes[key] || 0;
-        head += `<td><input class="vol-input" type="number" min="0" value="${v}" data-key="${key}"></td>`;
+        rowTotal += v;
+        colTotals[i] += v;
+        const zeroCls = v === 0 ? ' is-zero' : '';
+        html += `<td><input class="vol-input${zeroCls}" type="number" min="0" value="${v}" data-key="${key}"></td>`;
       });
-      head += '</tr>';
+      html += `<td class="total-cell">${rowTotal || '·'}</td></tr>`;
     });
-    head += '</tbody>';
-    t.innerHTML = head;
+    // Ligne de totaux par classe
+    const grand = colTotals.reduce((a, b) => a + b, 0);
+    html += '<tr class="totals-row"><td class="subj-col">Total / classe</td>';
+    colTotals.forEach(t => html += `<td class="total-cell">${t || '·'}</td>`);
+    html += `<td class="total-cell grand">${grand}</td></tr>`;
+    html += '</tbody>';
+    t.innerHTML = html;
     c.appendChild(t);
+    const recomputeTotals = () => {
+      const colT = classes.map(() => 0);
+      const rows = t.querySelectorAll('tbody tr:not(.totals-row)');
+      rows.forEach((tr, si) => {
+        let rowT = 0;
+        tr.querySelectorAll('.vol-input').forEach((inp, i) => {
+          const v = parseInt(inp.value) || 0;
+          rowT += v;
+          colT[i] += v;
+        });
+        tr.querySelector('.total-cell').textContent = rowT || '·';
+      });
+      const totRow = t.querySelector('tr.totals-row');
+      const cells = totRow.querySelectorAll('.total-cell');
+      colT.forEach((v, i) => { cells[i].textContent = v || '·'; });
+      cells[cells.length - 1].textContent = colT.reduce((a, b) => a + b, 0);
+    };
     t.querySelectorAll('.vol-input').forEach(inp => {
-      inp.addEventListener('change', e => {
+      inp.addEventListener('input', e => {
         const v = parseInt(e.target.value) || 0;
         this.state.volumes[e.target.dataset.key] = v;
+        e.target.classList.toggle('is-zero', v === 0);
+        recomputeTotals();
         this.onChange();
       });
     });

@@ -314,14 +314,62 @@ table th { color: var(--color-text-secondary); font-weight: 500; }
   border-color: var(--color-border-info);
 }
 
-/* Volumes matrix */
-#volumes-container table th, #volumes-container table td { text-align: center; }
-#volumes-container table th:first-child, #volumes-container td:first-child { text-align: left; font-weight: 500; }
-.vol-input {
-  width: 52px;
+/* Volumes matrix — compact et lisible */
+.volumes-table {
+  width: auto;                    /* pas d'étirement inutile */
+  border-collapse: collapse;
+}
+.volumes-table th, .volumes-table td {
   text-align: center;
-  padding: 4px;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--color-border-tertiary);
+}
+.volumes-table th {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+.volumes-table th.subj-col, .volumes-table td.subj-col {
+  text-align: left;
+  padding-right: 20px;
+  min-width: 140px;
+  font-weight: 500;
+}
+.volumes-table th.total-col, .volumes-table td.total-cell {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  padding-left: 14px;
+  border-left: 0.5px solid var(--color-border-tertiary);
+}
+.volumes-table tr.totals-row td {
+  border-top: 0.5px solid var(--color-border-secondary);
+  border-bottom: none;
+  padding-top: 8px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  font-size: 12px;
+}
+.volumes-table tr.totals-row td.grand {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.vol-input {
+  width: 44px;
+  text-align: center;
+  padding: 3px 4px;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.vol-input.is-zero {
+  color: var(--color-text-muted);
+  background: transparent;
+  border-color: transparent;
+}
+.vol-input.is-zero:hover, .vol-input.is-zero:focus {
+  color: var(--color-text-primary);
+  background-color: var(--color-background-tertiary);
+  border-color: var(--input-border);
 }
 
 /* Options */
