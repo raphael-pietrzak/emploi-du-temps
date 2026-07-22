@@ -371,6 +371,33 @@ table th { color: var(--color-text-secondary); font-weight: 500; }
   background-color: var(--color-background-tertiary);
   border-color: var(--input-border);
 }
+/* Volume > 0 mais aucun prof éligible → alerte visuelle */
+.vol-input.no-prof {
+  border-color: var(--color-border-danger) !important;
+  background-color: var(--color-background-danger);
+  color: var(--color-text-danger);
+}
+/* Bouton copier-ligne : discret, apparaît nettement au hover */
+.volumes-table td.row-action {
+  padding: 0 0 0 6px;
+  border-bottom: none;
+  width: 28px;
+}
+.volumes-table .copy-row {
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  border-color: transparent;
+  background: transparent;
+}
+.volumes-table tr:hover .copy-row {
+  color: var(--color-text-secondary);
+  border-color: var(--button-border);
+}
+.volumes-table .copy-row:hover {
+  color: var(--color-text-info);
+  background: var(--button-hover);
+}
 
 /* Options */
 .card label { color: var(--color-text-primary); font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }

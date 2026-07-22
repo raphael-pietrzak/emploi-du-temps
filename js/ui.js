@@ -210,14 +210,21 @@ const UI = {
       c.innerHTML = '<p class="hint">Ajoute des classes et matières d\'abord.</p>';
       return;
     }
+    // "Un prof enseigne-t-il (subj, cls) ?" — même logique que le solveur.
+    const hasProf = (subj, cls) => this.state.profs.some(p => {
+      if (p.subjectClasses) return (p.subjectClasses[subj] || []).includes(cls);
+      if (!(p.subjects || []).includes(subj)) return false;
+      return p.classes === undefined || p.classes.includes(cls);
+    });
+
     const t = document.createElement('table');
     t.className = 'volumes-table';
     let html = '<thead><tr><th class="subj-col">Matière</th>';
     classes.forEach(cl => html += `<th>${cl}</th>`);
-    html += '<th class="total-col">Total</th></tr></thead><tbody>';
+    html += '<th class="total-col">Total</th><th></th></tr></thead><tbody>';
     const colTotals = classes.map(() => 0);
-    subjects.forEach(sj => {
-      html += `<tr><td class="subj-col">${sj}</td>`;
+    subjects.forEach((sj, sjIdx) => {
+      html += `<tr data-row="${sjIdx}"><td class="subj-col">${sj}</td>`;
       let rowTotal = 0;
       classes.forEach((cl, i) => {
         const key = `${cl}|${sj}`;
@@ -225,15 +232,19 @@ const UI = {
         rowTotal += v;
         colTotals[i] += v;
         const zeroCls = v === 0 ? ' is-zero' : '';
-        html += `<td><input class="vol-input${zeroCls}" type="number" min="0" value="${v}" data-key="${key}"></td>`;
+        const noProfCls = (v > 0 && !hasProf(sj, cl)) ? ' no-prof' : '';
+        const title = (v > 0 && !hasProf(sj, cl)) ? `Aucun prof n'enseigne ${sj} en ${cl}.` : '';
+        html += `<td><input class="vol-input${zeroCls}${noProfCls}" type="number" min="0" value="${v}" data-key="${key}" data-row="${sjIdx}" data-col="${i}" title="${title}"></td>`;
       });
-      html += `<td class="total-cell">${rowTotal || '·'}</td></tr>`;
+      html += `<td class="total-cell">${rowTotal || '·'}</td>`;
+      html += `<td class="row-action"><button class="copy-row" data-subj="${sj}" title="Copier la 1ʳᵉ valeur non-nulle sur toutes les classes">⇢</button></td>`;
+      html += '</tr>';
     });
     // Ligne de totaux par classe
     const grand = colTotals.reduce((a, b) => a + b, 0);
     html += '<tr class="totals-row"><td class="subj-col">Total / classe</td>';
     colTotals.forEach(t => html += `<td class="total-cell">${t || '·'}</td>`);
-    html += `<td class="total-cell grand">${grand}</td></tr>`;
+    html += `<td class="total-cell grand">${grand}</td><td></td></tr>`;
     html += '</tbody>';
     t.innerHTML = html;
     c.appendChild(t);
@@ -254,13 +265,56 @@ const UI = {
       colT.forEach((v, i) => { cells[i].textContent = v || '·'; });
       cells[cells.length - 1].textContent = colT.reduce((a, b) => a + b, 0);
     };
-    t.querySelectorAll('.vol-input').forEach(inp => {
-      inp.addEventListener('input', e => {
-        const v = parseInt(e.target.value) || 0;
-        this.state.volumes[e.target.dataset.key] = v;
-        e.target.classList.toggle('is-zero', v === 0);
-        recomputeTotals();
-        this.onChange();
+    const inputs = Array.from(t.querySelectorAll('.vol-input'));
+    const updateCell = (inp) => {
+      const v = parseInt(inp.value) || 0;
+      const [cl, sj] = inp.dataset.key.split('|');
+      this.state.volumes[inp.dataset.key] = v;
+      inp.classList.toggle('is-zero', v === 0);
+      const bad = v > 0 && !hasProf(sj, cl);
+      inp.classList.toggle('no-prof', bad);
+      inp.title = bad ? `Aucun prof n'enseigne ${sj} en ${cl}.` : '';
+      recomputeTotals();
+      this.onChange();
+    };
+
+    inputs.forEach(inp => {
+      inp.addEventListener('input', () => updateCell(inp));
+
+      // Molette : incrémente / décrémente (uniquement quand le champ a le focus).
+      inp.addEventListener('wheel', e => {
+        if (document.activeElement !== inp) return;
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 1 : -1;
+        const nv = Math.max(0, (parseInt(inp.value) || 0) + delta);
+        inp.value = nv;
+        updateCell(inp);
+      }, { passive: false });
+
+      // Flèches ← → ↑ ↓ : navigue entre cellules (comme Excel).
+      inp.addEventListener('keydown', e => {
+        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+        // ← → : seulement si le curseur est au bord du champ (sinon on écrase la navigation texte).
+        if (e.key === 'ArrowLeft' && inp.selectionStart > 0) return;
+        if (e.key === 'ArrowRight' && inp.selectionEnd < inp.value.length) return;
+        e.preventDefault();
+        const row = +inp.dataset.row, col = +inp.dataset.col;
+        const dr = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+        const dc = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+        const next = inputs.find(x => +x.dataset.row === row + dr && +x.dataset.col === col + dc);
+        if (next) { next.focus(); next.select(); }
+      });
+    });
+
+    // Copier-ligne : applique la 1ʳᵉ valeur non-nulle de la ligne à toutes les classes.
+    t.querySelectorAll('.copy-row').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sj = btn.dataset.subj;
+        const rowInputs = inputs.filter(x => x.dataset.key.endsWith('|' + sj));
+        const src = rowInputs.find(x => (parseInt(x.value) || 0) > 0);
+        if (!src) { alert('Renseigne une valeur > 0 dans la ligne d\'abord.'); return; }
+        const val = parseInt(src.value) || 0;
+        rowInputs.forEach(x => { x.value = val; updateCell(x); });
       });
     });
   },
@@ -417,6 +471,9 @@ const UI = {
     });
 
     this.renderAvailGrid(prof);
+
+    // Les indicateurs "no-prof" du tableau de volumes dépendent des subjectClasses.
+    if (document.getElementById('volumes-container')) this.renderVolumes();
 
     document.getElementById('avail-all').onclick = () => {
       prof.availability = this.state.config.days.map(() => new Array(this.state.config.slots.length).fill(true));
