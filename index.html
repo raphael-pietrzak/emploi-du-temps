@@ -26,8 +26,8 @@
   <main>
     <!-- =============== CONFIG =============== -->
     <section id="tab-config" class="tab active">
-      <div class="config-top">
-        <div class="card">
+      <div class="bento">
+        <div class="card bento-grille tone-info">
           <h2>Grille horaire</h2>
           <p class="hint">Modifie les créneaux.</p>
           <table id="slots-table">
@@ -41,36 +41,34 @@
           </div>
         </div>
 
-        <div class="config-side">
-          <div class="card">
-            <h2>Classes</h2>
-            <ul id="classes-list" class="chip-list"></ul>
-            <div class="add-row">
-              <input id="new-class" placeholder="ex: 6e">
-              <button id="add-class">Ajouter</button>
-            </div>
-          </div>
-
-          <div class="card">
-            <h2>Matières</h2>
-            <ul id="subjects-list" class="chip-list"></ul>
-            <div class="add-row">
-              <input id="new-subject" placeholder="ex: Maths">
-              <button id="add-subject">Ajouter</button>
-            </div>
-          </div>
-
-          <div class="card">
-            <h2>Options</h2>
-            <label><input type="checkbox" id="opt-no-gaps"> Éviter les trous dans la journée des élèves</label>
+        <div class="card bento-classes tone-success">
+          <h2>Classes</h2>
+          <ul id="classes-list" class="chip-list"></ul>
+          <div class="add-row">
+            <input id="new-class" placeholder="ex: 6e">
+            <button id="add-class">Ajouter</button>
           </div>
         </div>
-      </div>
 
-      <div class="card">
-        <h2>Volumes horaires (heures / semaine)</h2>
-        <p class="hint">Combien d'heures de chaque matière pour chaque classe.</p>
-        <div id="volumes-container"></div>
+        <div class="card bento-matieres tone-warn">
+          <h2>Matières</h2>
+          <ul id="subjects-list" class="chip-list"></ul>
+          <div class="add-row">
+            <input id="new-subject" placeholder="ex: Maths">
+            <button id="add-subject">Ajouter</button>
+          </div>
+        </div>
+
+        <div class="card bento-options tone-neutral">
+          <h2>Options</h2>
+          <label><input type="checkbox" id="opt-no-gaps"> Éviter les trous dans la journée des élèves</label>
+        </div>
+
+        <div class="card bento-volumes">
+          <h2>Volumes horaires (heures / semaine)</h2>
+          <p class="hint">Combien d'heures de chaque matière pour chaque classe.</p>
+          <div id="volumes-container"></div>
+        </div>
       </div>
     </section>
 

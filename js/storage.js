@@ -65,7 +65,7 @@ const Storage = {
         pins: [],       // { id, subj, classes:[..], day, slot, profId?: null }
         timePref: {},   // { [subj]: 'early' | 'late' | 'any' }
       },
-      options: { noGapsForStudents: false, randomize: true },
+      options: { noGapsForStudents: true, randomize: true },
     };
   },
 };
