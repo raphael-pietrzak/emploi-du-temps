@@ -416,26 +416,51 @@ table th { color: var(--color-text-secondary); font-weight: 500; }
   color: var(--color-text-primary);
   font-weight: 600;
 }
-.vol-input {
-  width: 44px;
-  text-align: center;
-  padding: 3px 4px;
+.hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 0.5px solid var(--input-border);
+  border-radius: 3px;
+  background: var(--color-background-tertiary);
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+
+/* Cellule de volume : clic = +1, Maj+clic = −1. Pas de champ natif, pas de spinner. */
+.vol-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 4px 8px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+  border: 0.5px solid var(--input-border);
+  border-radius: var(--border-radius-sm, 4px);
+  background: var(--color-background-secondary, transparent);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.1s, border-color 0.1s;
 }
-.vol-input.is-zero {
+.vol-cell:hover {
+  background-color: var(--color-background-tertiary);
+}
+.vol-cell.is-zero {
   color: var(--color-text-muted);
   background: transparent;
   border-color: transparent;
 }
-.vol-input.is-zero:hover, .vol-input.is-zero:focus {
+.vol-cell.is-zero:hover {
   color: var(--color-text-primary);
   background-color: var(--color-background-tertiary);
   border-color: var(--input-border);
 }
 /* Volume > 0 mais aucun prof éligible → alerte visuelle */
-.vol-input.no-prof {
-  border-color: var(--color-border-danger) !important;
+.vol-cell.no-prof {
+  border-color: var(--color-border-danger);
   background-color: var(--color-background-danger);
   color: var(--color-text-danger);
 }

@@ -164,8 +164,8 @@ Object.assign(UI, {
     classes.forEach(cl => html += `<th>${cl}</th>`);
     html += '<th class="total-col">Total</th><th></th></tr></thead><tbody>';
     const colTotals = classes.map(() => 0);
-    subjects.forEach((sj, sjIdx) => {
-      html += `<tr data-row="${sjIdx}"><td class="subj-col">${sj}</td>`;
+    subjects.forEach(sj => {
+      html += `<tr><td class="subj-col">${sj}</td>`;
       let rowTotal = 0;
       classes.forEach((cl, i) => {
         const key = `${cl}|${sj}`;
@@ -174,8 +174,10 @@ Object.assign(UI, {
         colTotals[i] += v;
         const zeroCls = v === 0 ? ' is-zero' : '';
         const noProfCls = (v > 0 && !hasProf(sj, cl)) ? ' no-prof' : '';
-        const title = (v > 0 && !hasProf(sj, cl)) ? `Aucun prof n'enseigne ${sj} en ${cl}.` : '';
-        html += `<td><input class="vol-input${zeroCls}${noProfCls}" type="number" min="0" value="${v}" data-key="${key}" data-row="${sjIdx}" data-col="${i}" title="${title}"></td>`;
+        const title = (v > 0 && !hasProf(sj, cl))
+          ? `Aucun prof n'enseigne ${sj} en ${cl}.`
+          : 'Clic : +1 · Maj+clic : −1';
+        html += `<td><span class="vol-cell${zeroCls}${noProfCls}" data-key="${key}" title="${title}">${v}</span></td>`;
       });
       html += `<td class="total-cell">${rowTotal || '·'}</td>`;
       html += `<td class="row-action"><button class="copy-row" data-subj="${sj}" title="Copier la 1ʳᵉ valeur non-nulle sur toutes les classes">⇢</button></td>`;
@@ -189,61 +191,43 @@ Object.assign(UI, {
     html += '</tbody>';
     t.innerHTML = html;
     c.appendChild(t);
+
+    const cells = Array.from(t.querySelectorAll('.vol-cell'));
     const recomputeTotals = () => {
       const colT = classes.map(() => 0);
       const rows = t.querySelectorAll('tbody tr:not(.totals-row)');
-      rows.forEach((tr, si) => {
+      rows.forEach(tr => {
         let rowT = 0;
-        tr.querySelectorAll('.vol-input').forEach((inp, i) => {
-          const v = parseInt(inp.value) || 0;
+        tr.querySelectorAll('.vol-cell').forEach((el, i) => {
+          const v = this.state.volumes[el.dataset.key] || 0;
           rowT += v;
           colT[i] += v;
         });
         tr.querySelector('.total-cell').textContent = rowT || '·';
       });
       const totRow = t.querySelector('tr.totals-row');
-      const cells = totRow.querySelectorAll('.total-cell');
-      colT.forEach((v, i) => { cells[i].textContent = v || '·'; });
-      cells[cells.length - 1].textContent = colT.reduce((a, b) => a + b, 0);
+      const totCells = totRow.querySelectorAll('.total-cell');
+      colT.forEach((v, i) => { totCells[i].textContent = v || '·'; });
+      totCells[totCells.length - 1].textContent = colT.reduce((a, b) => a + b, 0);
     };
-    const inputs = Array.from(t.querySelectorAll('.vol-input'));
-    const updateCell = (inp) => {
-      const v = parseInt(inp.value) || 0;
-      const [cl, sj] = inp.dataset.key.split('|');
-      this.state.volumes[inp.dataset.key] = v;
-      inp.classList.toggle('is-zero', v === 0);
+
+    const setValue = (el, v) => {
+      v = Math.max(0, v);
+      const [cl, sj] = el.dataset.key.split('|');
+      this.state.volumes[el.dataset.key] = v;
+      el.textContent = v;
+      el.classList.toggle('is-zero', v === 0);
       const bad = v > 0 && !hasProf(sj, cl);
-      inp.classList.toggle('no-prof', bad);
-      inp.title = bad ? `Aucun prof n'enseigne ${sj} en ${cl}.` : '';
+      el.classList.toggle('no-prof', bad);
+      el.title = bad ? `Aucun prof n'enseigne ${sj} en ${cl}.` : 'Clic : +1 · Maj+clic : −1';
       recomputeTotals();
       this.onChange();
     };
 
-    inputs.forEach(inp => {
-      inp.addEventListener('input', () => updateCell(inp));
-
-      // Molette : incrémente / décrémente (uniquement quand le champ a le focus).
-      inp.addEventListener('wheel', e => {
-        if (document.activeElement !== inp) return;
-        e.preventDefault();
-        const delta = e.deltaY < 0 ? 1 : -1;
-        const nv = Math.max(0, (parseInt(inp.value) || 0) + delta);
-        inp.value = nv;
-        updateCell(inp);
-      }, { passive: false });
-
-      // Flèches ← → ↑ ↓ : navigue entre cellules (comme Excel).
-      inp.addEventListener('keydown', e => {
-        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
-        // ← → : seulement si le curseur est au bord du champ (sinon on écrase la navigation texte).
-        if (e.key === 'ArrowLeft' && inp.selectionStart > 0) return;
-        if (e.key === 'ArrowRight' && inp.selectionEnd < inp.value.length) return;
-        e.preventDefault();
-        const row = +inp.dataset.row, col = +inp.dataset.col;
-        const dr = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
-        const dc = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
-        const next = inputs.find(x => +x.dataset.row === row + dr && +x.dataset.col === col + dc);
-        if (next) { next.focus(); next.select(); }
+    cells.forEach(el => {
+      el.addEventListener('click', e => {
+        const cur = this.state.volumes[el.dataset.key] || 0;
+        setValue(el, cur + (e.shiftKey ? -1 : 1));
       });
     });
 
@@ -251,11 +235,11 @@ Object.assign(UI, {
     t.querySelectorAll('.copy-row').forEach(btn => {
       btn.addEventListener('click', () => {
         const sj = btn.dataset.subj;
-        const rowInputs = inputs.filter(x => x.dataset.key.endsWith('|' + sj));
-        const src = rowInputs.find(x => (parseInt(x.value) || 0) > 0);
+        const rowCells = cells.filter(x => x.dataset.key.endsWith('|' + sj));
+        const src = rowCells.find(x => (this.state.volumes[x.dataset.key] || 0) > 0);
         if (!src) { alert('Renseigne une valeur > 0 dans la ligne d\'abord.'); return; }
-        const val = parseInt(src.value) || 0;
-        rowInputs.forEach(x => { x.value = val; updateCell(x); });
+        const val = this.state.volumes[src.dataset.key] || 0;
+        rowCells.forEach(x => setValue(x, val));
       });
     });
   },
