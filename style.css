@@ -428,7 +428,7 @@ table th { color: var(--color-text-secondary); font-weight: 500; }
   line-height: 1.4;
 }
 
-/* Cellule de volume : clic = +1, Maj+clic = −1. Pas de champ natif, pas de spinner. */
+/* Cellule de volume : clic = +1, Shift+clic = −1. Pas de champ natif, pas de spinner. */
 .vol-cell {
   display: inline-flex;
   align-items: center;

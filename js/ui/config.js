@@ -176,7 +176,7 @@ Object.assign(UI, {
         const noProfCls = (v > 0 && !hasProf(sj, cl)) ? ' no-prof' : '';
         const title = (v > 0 && !hasProf(sj, cl))
           ? `Aucun prof n'enseigne ${sj} en ${cl}.`
-          : 'Clic : +1 · Maj+clic : −1';
+          : 'clic : +1 · shift+clic : -1';
         html += `<td><span class="vol-cell${zeroCls}${noProfCls}" data-key="${key}" title="${title}">${v}</span></td>`;
       });
       html += `<td class="total-cell">${rowTotal || '·'}</td>`;
