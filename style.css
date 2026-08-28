@@ -181,6 +181,13 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
   margin: 4px 0 12px;
   line-height: 1.5;
 }
+.partial-banner {
+  background: var(--color-background-warning);
+  color: var(--color-text-warning);
+  padding: 8px 12px;
+  border-radius: var(--border-radius-sm);
+  margin-bottom: 12px;
+}
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
@@ -618,6 +625,11 @@ input[type="checkbox"] {
   color: var(--color-text-secondary); font-size: 12px;
   cursor: pointer; user-select: none;
 }
+.budget-picker {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--color-text-secondary); font-size: 12px;
+}
+.budget-picker select { width: auto; }
 
 .status {
   padding: 10px 14px;
@@ -683,30 +695,19 @@ input[type="checkbox"] {
 }
 .pins-list li button:hover { color: var(--color-text-danger); background: none; }
 
-.timepref-row {
-  display: flex; align-items: center; gap: 12px;
-  padding: 6px 0;
-  border-bottom: 0.5px solid var(--color-border-tertiary);
+/* Rapport de charge des profs (onglet Professeurs) */
+.load-report-card { margin-top: 16px; }
+.load-report-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.load-report-table th {
+  text-align: left; padding: 6px 10px;
+  color: var(--color-text-muted); font-weight: 500; font-size: 12px;
+  border-bottom: 1px solid var(--color-border-tertiary);
 }
-.timepref-row:last-child { border-bottom: none; }
-.timepref-name { flex: 0 0 140px; font-weight: 500; font-size: 13px; }
-.timepref-choices { display: flex; gap: 6px; }
-.timepref-choice {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 10px;
-  border-radius: 20px;
-  background: var(--color-background-secondary);
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  border: 1.5px solid transparent;
-}
-.timepref-choice input[type=radio] { display: none; }
-.timepref-choice.active {
-  background: var(--color-background-info);
-  color: var(--color-text-info);
-  border-color: var(--color-border-info);
-}
+.load-report-table td { padding: 6px 10px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+.load-report-table .load-labels { color: var(--color-text-muted); font-size: 12px; }
+.load-row-bloquant td:not(.load-labels) { color: var(--color-text-danger); font-weight: 500; }
+.load-row-tendu td:not(.load-labels) { color: var(--color-text-warning); font-weight: 500; }
+.load-row-ok td:not(.load-labels) { color: var(--color-text-success); }
 
 /* Cellule épinglée dans l'emploi du temps */
 .cell-sched.pinned {

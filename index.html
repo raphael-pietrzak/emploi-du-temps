@@ -108,6 +108,12 @@
           </div>
         </div>
       </div>
+
+      <div class="card load-report-card">
+        <h2>Charge de travail</h2>
+        <p class="hint">Pour chaque prof, heures qu'il est le SEUL à pouvoir couvrir (matières/regroupements sans autre prof éligible) comparées à sa disponibilité restante. Marge nulle ou négative = configuration fragile ou bloquante, à corriger avant de générer.</p>
+        <div id="load-report-container"></div>
+      </div>
     </section>
 
     <!-- =============== CONSTRAINTS =============== -->
@@ -127,9 +133,16 @@
       </div>
 
       <div class="card">
-        <h2>Préférences horaires par matière</h2>
-        <p class="hint">Biaise le solveur : « fin de journée » pour les matières où les élèves sont moins concentrés (sport, chant, arts).</p>
-        <div id="time-pref-container"></div>
+        <h2>Regroupements de classes</h2>
+        <p class="hint">Des classes suivent une matière ensemble (même prof, même créneau) mais sans imposer quel jour ni quel créneau — le solveur choisit lui-même où les caser, comme pour un cours normal.</p>
+        <div class="pin-form">
+          <select id="group-subj"></select>
+          <div id="group-classes" class="pin-classes"></div>
+          <input type="number" id="group-hours" min="1" placeholder="Heures ensemble" title="Nombre d'heures que ces classes suivent ensemble">
+          <select id="group-prof"></select>
+          <button id="add-group">Regrouper</button>
+        </div>
+        <ul id="groups-list" class="pins-list"></ul>
       </div>
     </section>
 
@@ -139,8 +152,18 @@
         <div class="schedule-header">
           <div class="generate-group">
             <button id="generate-btn" class="primary">Générer l'emploi du temps</button>
+            <button id="repair-btn" disabled title="Complète par recherche locale le meilleur essai obtenu (rapide, mais ne peut pas prouver qu'une configuration est impossible).">Réparer</button>
             <label class="randomize-toggle">
               <input type="checkbox" id="opt-randomize"> Aléatoire
+            </label>
+            <label class="budget-picker" title="Au-delà de quelques secondes, l'onglet du navigateur se fige pendant tout le calcul (pas de traitement en arrière-plan).">
+              Budget :
+              <select id="opt-time-budget">
+                <option value="8000">8 s</option>
+                <option value="15000">15 s</option>
+                <option value="30000">30 s</option>
+                <option value="60000">1 min</option>
+              </select>
             </label>
           </div>
           <div class="view-picker">

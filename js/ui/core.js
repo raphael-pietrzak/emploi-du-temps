@@ -10,9 +10,9 @@ const UI = {
     this.state = state;
     this.onChange = onChange;
     // Migration : ancien state sans contraintes.
-    if (!this.state.constraints) this.state.constraints = { pins: [], timePref: {} };
+    if (!this.state.constraints) this.state.constraints = { pins: [], groups: [] };
     if (!this.state.constraints.pins) this.state.constraints.pins = [];
-    if (!this.state.constraints.timePref) this.state.constraints.timePref = {};
+    if (!this.state.constraints.groups) this.state.constraints.groups = [];
     this.bindTabs();
     this.bindIO();
     this.bindConfig();

@@ -1,28 +1,64 @@
-// schedule.js — onglet Emploi du temps : génération, sélection de vue et rendus (classe / prof / global).
+// schedule.js — onglet Emploi du temps : génération, réparation, sélection de vue et rendus (classe / prof / global).
 
 Object.assign(UI, {
+  lastPartial: null, // dernier essai partiel (Solver.solve échoué) : { schedule, placements, missing }
+
   bindSchedule() {
     document.getElementById('generate-btn').addEventListener('click', () => {
+      const btn = document.getElementById('generate-btn');
       const status = document.getElementById('solver-status');
+      const budgetMs = this.state.options.solverTimeBudgetMs || 8000;
       status.className = 'status';
-      status.textContent = 'Calcul en cours…';
+      status.textContent = budgetMs > 8000
+        ? `Calcul en cours (jusqu'à ${Math.round(budgetMs / 1000)} s — l'interface va se figer le temps du calcul)…`
+        : 'Calcul en cours…';
+      btn.disabled = true;
       setTimeout(() => {
         const t0 = performance.now();
         const res = Solver.solve(this.state);
         const dt = Math.round(performance.now() - t0);
         if (res.ok) {
           this.state.schedule = res.schedule;
+          this.lastPartial = null;
           status.className = 'status ok';
           status.textContent = `${res.message} (${dt}ms)`;
           this.onChange();
         } else {
           this.state.schedule = null;
+          this.lastPartial = res.partial || null;
           status.className = 'status err';
           status.textContent = res.message;
         }
+        btn.disabled = false;
+        this.updateRepairButton();
         this.renderSchedule();
       }, 10);
     });
+
+    document.getElementById('repair-btn').addEventListener('click', () => {
+      if (!this.lastPartial || !this.lastPartial.missing.length) return;
+      const status = document.getElementById('solver-status');
+      status.className = 'status';
+      status.textContent = 'Réparation en cours (recherche locale)…';
+      setTimeout(() => {
+        const t0 = performance.now();
+        const res = Solver.repair(this.state, this.lastPartial);
+        const dt = Math.round(performance.now() - t0);
+        if (res.ok) {
+          this.state.schedule = res.schedule;
+          this.lastPartial = null;
+          status.className = 'status ok';
+          status.textContent = `${res.message} (${dt}ms)`;
+          this.onChange();
+        } else {
+          status.className = 'status err';
+          status.textContent = `${res.message} (${dt}ms)`;
+        }
+        this.updateRepairButton();
+        this.renderSchedule();
+      }, 10);
+    });
+
     document.getElementById('view-select').addEventListener('change', () => this.renderSchedule());
     const rnd = document.getElementById('opt-randomize');
     rnd.checked = !!this.state.options.randomize;
@@ -30,6 +66,19 @@ Object.assign(UI, {
       this.state.options.randomize = e.target.checked;
       this.onChange();
     });
+    const budgetSel = document.getElementById('opt-time-budget');
+    budgetSel.value = String(this.state.options.solverTimeBudgetMs || 8000);
+    budgetSel.addEventListener('change', e => {
+      this.state.options.solverTimeBudgetMs = +e.target.value;
+      this.onChange();
+    });
+    this.updateRepairButton();
+  },
+
+  updateRepairButton() {
+    const btn = document.getElementById('repair-btn');
+    if (!btn) return;
+    btn.disabled = !(this.lastPartial && this.lastPartial.missing && this.lastPartial.missing.length > 0);
   },
 
   renderSchedule() {
@@ -51,33 +100,49 @@ Object.assign(UI, {
 
     const cont = document.getElementById('schedule-container');
     cont.innerHTML = '';
-    if (!this.state.schedule) {
-      cont.innerHTML = '<p class="hint">Aucun emploi du temps généré. Clique sur "Générer".</p>';
+    const view = sel.value;
+
+    if (this.state.schedule) {
+      if (view.startsWith('prof:')) {
+        cont.appendChild(this.buildProfGrid(view.slice(5)));
+      } else if (view.startsWith('class:')) {
+        cont.appendChild(this.buildClassBlock(view.slice(6)));
+      } else {
+        this.state.config.classes.forEach(cls => cont.appendChild(this.buildClassBlock(cls)));
+      }
       return;
     }
 
-    const view = sel.value;
-    if (view.startsWith('prof:')) {
-      const profId = view.slice(5);
-      cont.appendChild(this.buildProfGrid(profId));
-    } else if (view.startsWith('class:')) {
-      const cls = view.slice(6);
-      cont.appendChild(this.buildClassBlock(cls));
-    } else {
-      this.state.config.classes.forEach(cls => {
-        cont.appendChild(this.buildClassBlock(cls));
-      });
+    // Pas de planning validé, mais un essai partiel disponible (échec de la
+    // dernière génération) : on l'affiche quand même, en lecture seule, pour
+    // donner une idée concrète de ce qui a pu être casé avant le blocage.
+    if (this.lastPartial && this.lastPartial.schedule && Object.keys(this.lastPartial.schedule).length > 0) {
+      const banner = document.createElement('p');
+      banner.className = 'hint partial-banner';
+      banner.textContent = `Essai partiel — ${this.lastPartial.missing.length} heure(s) manquante(s), lecture seule. Clique sur "Réparer" pour tenter de compléter par recherche locale.`;
+      cont.appendChild(banner);
+      const schedule = this.lastPartial.schedule;
+      if (view.startsWith('prof:')) {
+        cont.appendChild(this.buildProfGrid(view.slice(5), schedule));
+      } else if (view.startsWith('class:')) {
+        cont.appendChild(this.buildClassBlock(view.slice(6), schedule, true));
+      } else {
+        this.state.config.classes.forEach(cls => cont.appendChild(this.buildClassBlock(cls, schedule, true)));
+      }
+      return;
     }
+
+    cont.innerHTML = '<p class="hint">Aucun emploi du temps généré. Clique sur "Générer".</p>';
   },
 
-  buildClassBlock(cls) {
+  buildClassBlock(cls, schedule = this.state.schedule, readOnly = false) {
     const wrap = document.createElement('div');
     wrap.className = 'class-block';
     const h = document.createElement('h3');
     h.textContent = 'Classe ' + cls;
     wrap.appendChild(h);
     const grid = this.buildScheduleGrid((d, s) => {
-      const cell = this.state.schedule[`${cls}|${d}|${s}`];
+      const cell = schedule[`${cls}|${d}|${s}`];
       if (!cell) return null;
       const prof = this.state.profs.find(p => p.id === cell.profId);
       return { top: cell.subj, bottom: prof ? prof.name : '—', pinned: !!cell.pinned };
@@ -86,11 +151,9 @@ Object.assign(UI, {
     grid.querySelectorAll('.cell-sched').forEach(td => {
       td.dataset.cls = cls;
       const key = `${cls}|${td.dataset.d}|${td.dataset.s}`;
-      const cell = this.state.schedule[key];
-      if (cell?.pinned) {
-        td.classList.add('pinned');
-        return; // pas de swap sur une épingle
-      }
+      const cell = schedule[key];
+      if (cell?.pinned) td.classList.add('pinned');
+      if (readOnly || cell?.pinned) return; // pas de swap en lecture seule ou sur une épingle
       td.classList.add('swappable');
       td.addEventListener('click', () => this.handleSwapClick(td));
     });
@@ -98,7 +161,7 @@ Object.assign(UI, {
     return wrap;
   },
 
-  buildProfGrid(profId) {
+  buildProfGrid(profId, schedule = this.state.schedule) {
     const prof = this.state.profs.find(p => p.id === profId);
     const wrap = document.createElement('div');
     wrap.className = 'class-block';
@@ -106,10 +169,10 @@ Object.assign(UI, {
     h.textContent = 'Prof ' + (prof ? prof.name : profId);
     wrap.appendChild(h);
     wrap.appendChild(this.buildScheduleGrid((d, s) => {
-      // Un prof peut apparaître sur plusieurs classes (épingle multi-classes).
+      // Un prof peut apparaître sur plusieurs classes (épingle/groupe multi-classes).
       const found = [];
       for (const cls of this.state.config.classes) {
-        const cell = this.state.schedule[`${cls}|${d}|${s}`];
+        const cell = schedule[`${cls}|${d}|${s}`];
         if (cell && cell.profId === profId) found.push({ cls, cell });
       }
       if (found.length === 0) return null;

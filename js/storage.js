@@ -63,9 +63,9 @@ const Storage = {
       schedule: null,
       constraints: {
         pins: [],       // { id, subj, classes:[..], day, slot, profId?: null }
-        timePref: {},   // { [subj]: 'early' | 'late' | 'any' }
+        groups: [],     // { id, subj, classes:[..] (>=2), hours, profId?: null } — regroupées, mais sans jour/créneau imposé
       },
-      options: { noGapsForStudents: true, randomize: true },
+      options: { noGapsForStudents: true, randomize: true, solverTimeBudgetMs: 8000 },
     };
   },
 };

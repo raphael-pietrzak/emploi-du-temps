@@ -32,7 +32,7 @@ Application vanilla sans build ni modules ES : chaque script est chargé par `in
 | `js/ui/io.js` | Boutons import / export |
 | `js/ui/config.js` | Onglet Configuration : classes, matières, créneaux, jours, options, matrice des volumes |
 | `js/ui/profs.js` | Onglet Professeurs : liste, éditeur matières/classes, grille de dispos (drag-to-paint) |
-| `js/ui/constraints.js` | Onglet Contraintes : épingles (créneaux fixés) et préférences horaires par matière |
+| `js/ui/constraints.js` | Onglet Contraintes : épingles (créneaux fixés) et regroupements de classes (matière partagée sans créneau imposé) |
 | `js/ui/schedule.js` | Onglet Emploi du temps : génération + rendus (vue classe / prof / global) |
 | `js/ui/swap.js` | Échange interactif de deux cellules dans la grille, avec règles de validité |
 
@@ -42,7 +42,7 @@ Application vanilla sans build ni modules ES : chaque script est chargé par `in
 { config: { classes, subjects, slots, days, activeDays },
   volumes: { "classe|matière": heures },
   profs:   [{ id, name, subjectClasses: {matière: [classes]}, availability: [jours][slots] }],
-  constraints: { pins: [...], timePref: {matière: 'early'|'any'|'late'} },
+  constraints: { pins: [...], groups: [...] },
   options: { noGapsForStudents, randomize },
   schedule: { "classe|jour|slot": { subj, profId, pinned } } | null }
 ```

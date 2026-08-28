@@ -48,6 +48,38 @@ Object.assign(UI, {
       list.appendChild(li);
     });
     this.renderProfEditor();
+    this.renderLoadReport();
+  },
+
+  renderLoadReport() {
+    const cont = document.getElementById('load-report-container');
+    if (!cont) return;
+    if (this.state.profs.length === 0) {
+      cont.innerHTML = '<p class="hint">Ajoute des profs d\'abord.</p>';
+      return;
+    }
+    const res = Solver.analyzeProfLoad(this.state);
+    if (!res.ok) {
+      cont.innerHTML = `<p class="hint">${res.message}</p>`;
+      return;
+    }
+    const statusLabel = { bloquant: 'Bloquant', tendu: 'Tendu', ok: 'OK' };
+    let html = '<table class="load-report-table"><thead><tr>'
+      + '<th>Prof</th><th>Charge incompressible</th><th>Dispo restante</th><th>Marge</th><th>Statut</th><th>Matières concernées</th>'
+      + '</tr></thead><tbody>';
+    res.rows.forEach(r => {
+      if (r.exclusiveHours === 0) return; // rien d'exclusif chez lui : pas de signal utile ici
+      html += `<tr class="load-row-${r.status}">`
+        + `<td>${r.name}</td>`
+        + `<td>${r.exclusiveHours}h</td>`
+        + `<td>${r.netAvailability}</td>`
+        + `<td>${r.margin >= 0 ? '+' : ''}${r.margin}</td>`
+        + `<td>${statusLabel[r.status]}</td>`
+        + `<td class="load-labels">${r.labels.join(', ')}</td>`
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+    cont.innerHTML = html;
   },
 
   renderProfEditor() {
