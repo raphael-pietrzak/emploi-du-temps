@@ -65,7 +65,7 @@ const Storage = {
         pins: [],       // { id, subj, classes:[..], day, slot, profId?: null }
         groups: [],     // { id, subj, classes:[..] (>=2), hours, profId?: null } — regroupées, mais sans jour/créneau imposé
       },
-      options: { noGapsForStudents: true, randomize: true, solverTimeBudgetMs: 8000 },
+      options: { noGapsForStudents: true, randomize: true },
     };
   },
 };

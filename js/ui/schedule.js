@@ -7,11 +7,8 @@ Object.assign(UI, {
     document.getElementById('generate-btn').addEventListener('click', () => {
       const btn = document.getElementById('generate-btn');
       const status = document.getElementById('solver-status');
-      const budgetMs = this.state.options.solverTimeBudgetMs || 8000;
       status.className = 'status';
-      status.textContent = budgetMs > 8000
-        ? `Calcul en cours (jusqu'à ${Math.round(budgetMs / 1000)} s — l'interface va se figer le temps du calcul)…`
-        : 'Calcul en cours…';
+      status.textContent = 'Calcul en cours…';
       btn.disabled = true;
       setTimeout(() => {
         const t0 = performance.now();
@@ -64,12 +61,6 @@ Object.assign(UI, {
     rnd.checked = !!this.state.options.randomize;
     rnd.addEventListener('change', e => {
       this.state.options.randomize = e.target.checked;
-      this.onChange();
-    });
-    const budgetSel = document.getElementById('opt-time-budget');
-    budgetSel.value = String(this.state.options.solverTimeBudgetMs || 8000);
-    budgetSel.addEventListener('change', e => {
-      this.state.options.solverTimeBudgetMs = +e.target.value;
       this.onChange();
     });
     this.updateRepairButton();

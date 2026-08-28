@@ -625,11 +625,6 @@ input[type="checkbox"] {
   color: var(--color-text-secondary); font-size: 12px;
   cursor: pointer; user-select: none;
 }
-.budget-picker {
-  display: flex; align-items: center; gap: 6px;
-  color: var(--color-text-secondary); font-size: 12px;
-}
-.budget-picker select { width: auto; }
 
 .status {
   padding: 10px 14px;
