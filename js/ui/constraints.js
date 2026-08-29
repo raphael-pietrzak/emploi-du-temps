@@ -39,6 +39,20 @@ Object.assign(UI, {
       this.onChange();
       this.renderConstraints();
     });
+
+    document.getElementById('add-spread').addEventListener('click', () => {
+      const subj = document.getElementById('spread-subj').value;
+      const classes = Array.from(document.querySelectorAll('#spread-classes .chip.active'))
+        .map(el => el.dataset.cls);
+      if (!subj) { alert('Choisis une matière.'); return; }
+      if (classes.length === 0) { alert('Sélectionne au moins une classe.'); return; }
+      this.state.constraints.spread.push({
+        id: 'spread_' + Date.now(),
+        subj, classes,
+      });
+      this.onChange();
+      this.renderConstraints();
+    });
   },
 
   renderConstraints() {
@@ -143,6 +157,40 @@ Object.assign(UI, {
         this.renderConstraints();
       });
       gList.appendChild(li);
+    });
+
+    // ---------- Répartition sur des jours différents ----------
+    const spSubjSel = document.getElementById('spread-subj');
+    const prevSpSubj = spSubjSel.value;
+    spSubjSel.innerHTML = '<option value="">Matière…</option>' +
+      subjects.map(s => `<option value="${s}">${s}</option>`).join('');
+    if (subjects.includes(prevSpSubj)) spSubjSel.value = prevSpSubj;
+
+    const spClsWrap = document.getElementById('spread-classes');
+    const prevSpActive = new Set(
+      Array.from(spClsWrap.querySelectorAll('.chip.active')).map(el => el.dataset.cls)
+    );
+    spClsWrap.innerHTML = '';
+    classes.forEach(cl => {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (prevSpActive.has(cl) ? ' active' : '');
+      chip.dataset.cls = cl;
+      chip.textContent = cl;
+      chip.addEventListener('click', () => chip.classList.toggle('active'));
+      spClsWrap.appendChild(chip);
+    });
+
+    const spList = document.getElementById('spread-list');
+    spList.innerHTML = '';
+    (this.state.constraints.spread || []).forEach(sp => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span><strong>${sp.subj}</strong> — ${sp.classes.join(', ')} — jours différents</span><button title="Retirer">×</button>`;
+      li.querySelector('button').addEventListener('click', () => {
+        this.state.constraints.spread = this.state.constraints.spread.filter(x => x.id !== sp.id);
+        this.onChange();
+        this.renderConstraints();
+      });
+      spList.appendChild(li);
     });
   },
 

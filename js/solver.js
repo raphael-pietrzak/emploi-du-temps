@@ -202,6 +202,29 @@ function buildContext(state) {
       return { ok: false, message: 'Regroupements invalides :\n• ' + groupErrors.join('\n• ') };
     }
 
+    // ---------- Répartition sur des jours différents ----------
+    // Une règle "spread" : (subj, classes[]) — pour CHAQUE classe listée,
+    // interdit à la recherche de placer 2 heures de cette matière le même
+    // jour. Contrairement à une épingle, ne fixe NI le jour NI le créneau :
+    // le solveur garde toute liberté, juste avec cette restriction en plus.
+    // `spreadPairs` : Set de "cls|subj" auxquels la règle s'applique.
+    const spreadPairs = new Set();
+    const spreadErrors = [];
+    for (const sp of (constraints.spread || [])) {
+      const label = `Répartition ${sp.subj} · ${(sp.classes || []).join('+')}`;
+      if (!config.subjects.includes(sp.subj)) { spreadErrors.push(`${label} : matière inconnue.`); continue; }
+      if (!(sp.classes || []).length) { spreadErrors.push(`${label} : aucune classe sélectionnée.`); continue; }
+      let bad = false;
+      for (const cls of sp.classes) {
+        if (!config.classes.includes(cls)) { spreadErrors.push(`${label} : classe ${cls} inconnue.`); bad = true; }
+      }
+      if (bad) continue;
+      for (const cls of sp.classes) spreadPairs.add(`${cls}|${sp.subj}`);
+    }
+    if (spreadErrors.length > 0) {
+      return { ok: false, message: 'Règles de répartition invalides :\n• ' + spreadErrors.join('\n• ') };
+    }
+
     // Reconstitution de la demande post-épingles/groupes.
     const demand = [];
     for (const cls of config.classes) {
@@ -253,16 +276,20 @@ function buildContext(state) {
     const sessions = [];
     for (const d of demand) {
       const elig = eligibleFor(d.subj, d.cls);
-      for (let i = 0; i < d.hours; i++) sessions.push({ classes: [d.cls], subj: d.subj, elig });
+      const pairKey = `${d.cls}|${d.subj}`;
+      const spreadKey = spreadPairs.has(pairKey) ? pairKey : null;
+      for (let i = 0; i < d.hours; i++) sessions.push({ classes: [d.cls], subj: d.subj, elig, spreadKey });
     }
     for (const g of groups) {
-      for (let i = 0; i < g.hours; i++) sessions.push({ classes: g.classes, subj: g.subj, elig: g.elig });
+      // Une règle de répartition ne s'applique qu'à une classe seule (elle
+      // porte sur SA propre semaine) — pas de sens pour un groupe multi-classes.
+      for (let i = 0; i < g.hours; i++) sessions.push({ classes: g.classes, subj: g.subj, elig: g.elig, spreadKey: null });
     }
 
     return {
       ok: true, config, profs, options, dayIdxs, slotCount, totalSlotsPerClass,
       demand, groups, sessions, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
-      pinnedSlotsByClass, groupSlotsByClass, teachesPair, eligibleFor, availCountFor,
+      pinnedSlotsByClass, groupSlotsByClass, spreadPairs, teachesPair, eligibleFor, availCountFor,
     };
 }
 
@@ -273,7 +300,7 @@ const Solver = {
     const {
       config, profs, options, dayIdxs, slotCount, totalSlotsPerClass,
       demand, groups, sessions, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
-      pinnedSlotsByClass, groupSlotsByClass, eligibleFor, availCountFor,
+      pinnedSlotsByClass, groupSlotsByClass, spreadPairs, eligibleFor, availCountFor,
     } = ctx;
 
     // ---------- Pré-vérifications ----------
@@ -283,6 +310,14 @@ const Solver = {
     for (const d of demand) {
       if (eligibleFor(d.subj, d.cls).length === 0) {
         errors.push(`Aucun prof n'enseigne "${d.subj}" — mais ${d.hours}h sont demandées pour ${d.cls}. Va dans Professeurs et coche cette matière chez un prof.`);
+      }
+    }
+
+    // Check 1bis : une règle "jours différents" demande mécaniquement au moins
+    // autant de jours actifs que d'heures à répartir.
+    for (const d of demand) {
+      if (spreadPairs.has(`${d.cls}|${d.subj}`) && d.hours > dayIdxs.length) {
+        errors.push(`${d.cls} · ${d.subj} : ${d.hours}h à répartir sur des jours différents, mais seulement ${dayIdxs.length} jour(s) actif(s) dans la semaine.`);
       }
     }
 
@@ -403,6 +438,12 @@ const Solver = {
       if (profId) busyProf[profId][+d][+s] = true;
     }
 
+    // Jours déjà utilisés par une paire (cls,subj) sous règle de répartition —
+    // "spreadKey|day" -> nb de sessions de cette paire déjà posées ce jour-là.
+    // Tant que ça reste à 0, ce jour est ouvert pour cette paire ; dès qu'une
+    // session s'y pose, il devient interdit aux AUTRES sessions de la même paire.
+    const spreadUsedDay = {};
+
     // `sessions` (une heure de classes[]/matière à placer) vient de ctx — voir buildContext.
 
     // Index pour ne recalculer les domaines QUE des sessions concernées quand
@@ -412,6 +453,7 @@ const Solver = {
     // chaque nœud (coûteux si on a des centaines de sessions).
     const sessionsByClass = {};
     const sessionsByProf = {};
+    const sessionsBySpreadKey = {};
     sessions.forEach((sess, idx) => {
       for (const cls of sess.classes) {
         (sessionsByClass[cls] = sessionsByClass[cls] || []).push(idx);
@@ -419,19 +461,26 @@ const Solver = {
       for (const p of sess.elig) {
         (sessionsByProf[p.id] = sessionsByProf[p.id] || []).push(idx);
       }
+      if (sess.spreadKey) {
+        (sessionsBySpreadKey[sess.spreadKey] = sessionsBySpreadKey[sess.spreadKey] || []).push(idx);
+      }
     });
-    const affectedBy = (classesArr, profId) => {
+    const affectedBy = (classesArr, profId, spreadKey) => {
       const set = new Set();
       for (const cls of classesArr) {
         for (const idx of (sessionsByClass[cls] || [])) set.add(idx);
       }
       for (const idx of (sessionsByProf[profId] || [])) set.add(idx);
+      if (spreadKey) {
+        for (const idx of (sessionsBySpreadKey[spreadKey] || [])) set.add(idx);
+      }
       return set;
     };
 
     const candidatesFor = (sess) => {
       const list = [];
       for (const d of dayIdxs) {
+        if (sess.spreadKey && spreadUsedDay[`${sess.spreadKey}|${d}`]) continue; // jour déjà pris par une autre heure de cette matière/classe
         for (let s = 0; s < slotCount; s++) {
           if (sess.classes.some(cls => busyClass[cls][d][s])) continue; // TOUTES les classes doivent être libres
           for (const prof of sess.elig) {
@@ -449,6 +498,7 @@ const Solver = {
       const sess = sessions[idx];
       let n = 0;
       for (const d of dayIdxs) {
+        if (sess.spreadKey && spreadUsedDay[`${sess.spreadKey}|${d}`]) continue;
         for (let s = 0; s < slotCount; s++) {
           if (sess.classes.some(cls => busyClass[cls][d][s])) continue;
           for (const prof of sess.elig) {
@@ -465,13 +515,14 @@ const Solver = {
 
     // Recalcule (toujours par calcul exact, jamais par incrément approximatif,
     // pour rester correct dans les deux sens assignation/annulation) le
-    // domaine des sessions affectées par un (dé)placement sur (classes, profId).
-    // Si checkWipeout, renvoie la liste des sessions dont le domaine vient de
-    // tomber à 0 : c'est le forward-checking qui anticipe un blocage futur
-    // AVANT de récurser dedans, au lieu de le découvrir plusieurs niveaux plus bas.
-    const applyDelta = (classesArr, profId, checkWipeout) => {
+    // domaine des sessions affectées par un (dé)placement sur (classes, profId,
+    // spreadKey). Si checkWipeout, renvoie la liste des sessions dont le
+    // domaine vient de tomber à 0 : c'est le forward-checking qui anticipe un
+    // blocage futur AVANT de récurser dedans, au lieu de le découvrir
+    // plusieurs niveaux plus bas.
+    const applyDelta = (classesArr, profId, checkWipeout, spreadKey) => {
       const wiped = [];
-      for (const idx of affectedBy(classesArr, profId)) {
+      for (const idx of affectedBy(classesArr, profId, spreadKey)) {
         if (assigned[idx]) continue;
         domCache[idx] = domainSize(idx);
         if (checkWipeout && domCache[idx] === 0) wiped.push(idx);
@@ -557,7 +608,7 @@ const Solver = {
         // du placement complet à ce moment — c'est la base que `repair()`
         // utilisera pour tenter de compléter par recherche locale.
         bestPlacements = placedStack.map(p => ({
-          classes: p.sess.classes, subj: p.sess.subj, elig: p.sess.elig,
+          classes: p.sess.classes, subj: p.sess.subj, elig: p.sess.elig, spreadKey: p.sess.spreadKey,
           day: p.c.day, slot: p.c.slot, profId: p.c.profId,
         }));
       }
@@ -612,11 +663,15 @@ const Solver = {
           schedule[`${cls}|${c.day}|${c.slot}`] = { profId: c.profId, subj: sess.subj, grouped: sess.classes.length > 1 };
         }
         busyProf[c.profId][c.day][c.slot] = true;
+        if (sess.spreadKey) {
+          const k = `${sess.spreadKey}|${c.day}`;
+          spreadUsedDay[k] = (spreadUsedDay[k] || 0) + 1;
+        }
         placedStack.push({ sess, c });
 
         // Forward-checking : si ce placement vide le domaine d'une autre
         // session pas encore posée, inutile de récurser — c'est déjà mort.
-        const wiped = applyDelta(sess.classes, c.profId, true);
+        const wiped = applyDelta(sess.classes, c.profId, true, sess.spreadKey);
         let success = false;
         if (wiped.length === 0) {
           success = backtrack();
@@ -633,7 +688,12 @@ const Solver = {
           delete schedule[`${cls}|${c.day}|${c.slot}`];
         }
         busyProf[c.profId][c.day][c.slot] = false;
-        applyDelta(sess.classes, c.profId, false);
+        if (sess.spreadKey) {
+          const k = `${sess.spreadKey}|${c.day}`;
+          spreadUsedDay[k]--;
+          if (spreadUsedDay[k] === 0) delete spreadUsedDay[k];
+        }
+        applyDelta(sess.classes, c.profId, false, sess.spreadKey);
 
         if (aborted) break;
       }
@@ -761,7 +821,7 @@ const Solver = {
     // épingles (pinnedBusyClass/pinnedBusyProf) restent strictement figées.
     const items = [];
     for (const p of partial.placements) {
-      items.push({ classes: p.classes, subj: p.subj, elig: p.elig, day: p.day, slot: p.slot, profId: p.profId });
+      items.push({ classes: p.classes, subj: p.subj, elig: p.elig, spreadKey: p.spreadKey || null, day: p.day, slot: p.slot, profId: p.profId });
     }
     for (const m of partial.missing) {
       // Amorce arbitraire : premier (jour, slot, prof éligible) où le prof est
@@ -778,32 +838,37 @@ const Solver = {
         if (seed) break;
       }
       if (!seed) seed = { day: dayIdxs[0], slot: 0, profId: m.elig[0].id }; // ne devrait pas arriver (Check1/2 l'auraient déjà signalé)
-      items.push({ classes: m.classes, subj: m.subj, elig: m.elig, day: seed.day, slot: seed.slot, profId: seed.profId });
+      items.push({ classes: m.classes, subj: m.subj, elig: m.elig, spreadKey: m.spreadKey || null, day: seed.day, slot: seed.slot, profId: seed.profId });
     }
 
     // Occupation courante de chaque (classe|jour|slot) et (prof|jour|slot) —
     // par nombre d'items présents (0 ou 1 = OK, 2+ = conflit). Les épingles
     // comptent comme un occupant permanent supplémentaire qu'on ne retire
     // jamais, pour qu'un item ne puisse jamais se poser dessus sans conflit.
-    const classOcc = {}; // "cls|d|s" -> count
-    const profOcc = {};  // "profId|d|s" -> count
+    const classOcc = {};  // "cls|d|s" -> count
+    const profOcc = {};   // "profId|d|s" -> count
+    const spreadOcc = {}; // "spreadKey|d" -> count de sessions de cette matière/classe déjà ce jour-là
     const bump = (map, key, delta) => { map[key] = (map[key] || 0) + delta; };
     for (const key of Object.keys(pinnedBusyClass)) bump(classOcc, key, 1);
     for (const key of Object.keys(pinnedBusyProf)) bump(profOcc, key, 1);
     const place = (it, delta) => {
       for (const cls of it.classes) bump(classOcc, `${cls}|${it.day}|${it.slot}`, delta);
       bump(profOcc, `${it.profId}|${it.day}|${it.slot}`, delta);
+      if (it.spreadKey) bump(spreadOcc, `${it.spreadKey}|${it.day}`, delta);
     };
     items.forEach(it => place(it, 1));
 
     // Conflits d'un item = somme, sur chacune de ses classes ET sur son prof,
-    // du nombre d'AUTRES occupants au même (jour, slot). On retire d'abord
-    // sa propre contribution (1 par classe + 1 pour le prof) pour ne compter
+    // du nombre d'AUTRES occupants au même (jour, slot), PLUS (si une règle de
+    // répartition s'applique) le nombre d'autres heures de la même matière/
+    // classe déjà posées CE JOUR-LÀ. On retire d'abord sa propre contribution
+    // (1 par classe + 1 pour le prof + 1 pour la répartition) pour ne compter
     // que les autres.
     const conflictsOf = (it) => {
       let n = 0;
       for (const cls of it.classes) n += (classOcc[`${cls}|${it.day}|${it.slot}`] || 0) - 1;
       n += (profOcc[`${it.profId}|${it.day}|${it.slot}`] || 0) - 1;
+      if (it.spreadKey) n += (spreadOcc[`${it.spreadKey}|${it.day}`] || 0) - 1;
       return n;
     };
 
@@ -822,15 +887,17 @@ const Solver = {
       const it = conflicted[Math.floor(Math.random() * conflicted.length)];
       place(it, -1); // le retirer le temps d'évaluer les positions possibles
 
-      // Toutes les positions valides (dispo prof respectée — contrainte dure ;
-      // épingles jamais utilisées comme cible) ; on garde celle(s) qui minimisent
-      // le conflit résultant, tie-break aléatoire. 10% du temps, mouvement
-      // purement aléatoire (pas forcément le meilleur) pour échapper aux
-      // optimums locaux — classique en recherche locale (style WalkSAT).
+      // Toutes les positions valides (dispo prof respectée, règle de répartition
+      // respectée — contraintes dures ; épingles jamais utilisées comme cible) ;
+      // on garde celle(s) qui minimisent le conflit résultant, tie-break
+      // aléatoire. 10% du temps, mouvement purement aléatoire (pas forcément
+      // le meilleur) pour échapper aux optimums locaux — classique en
+      // recherche locale (style WalkSAT).
       let bestScore = Infinity;
       let bestOptions = [];
       const allOptions = [];
       for (const day of dayIdxs) {
+        if (it.spreadKey && (spreadOcc[`${it.spreadKey}|${day}`] || 0) > 0) continue; // jour déjà pris par une autre heure de cette matière/classe
         for (let slot = 0; slot < slotCount; slot++) {
           if (it.classes.some(cls => pinnedBusyClass[`${cls}|${day}|${slot}`])) continue;
           for (const prof of it.elig) {

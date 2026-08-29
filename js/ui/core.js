@@ -13,6 +13,7 @@ const UI = {
     if (!this.state.constraints) this.state.constraints = { pins: [], groups: [] };
     if (!this.state.constraints.pins) this.state.constraints.pins = [];
     if (!this.state.constraints.groups) this.state.constraints.groups = [];
+    if (!this.state.constraints.spread) this.state.constraints.spread = [];
     this.bindTabs();
     this.bindIO();
     this.bindConfig();
