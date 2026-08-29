@@ -45,7 +45,6 @@ const Storage = {
     return {
       config: {
         days: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven'],
-        activeDays: [true, true, true, true, true],
         slots: [
           { start: '08:20', end: '09:20' },
           { start: '09:20', end: '10:10' },
@@ -55,6 +54,10 @@ const Storage = {
           { start: '14:05', end: '14:55' },
           { start: '15:10', end: '16:00' },
         ],
+        // openSlots[jour][créneau] = true -> il y a cours à ce moment-là (pour
+        // tout le monde). Par défaut tout est ouvert ; on ferme des créneaux
+        // précis (ex: mercredi après-midi) plutôt que des jours entiers.
+        openSlots: [0, 1, 2, 3, 4].map(() => new Array(7).fill(true)),
         classes: ['6e', '5e', '4e', '3e'],
         subjects: ['Maths', 'Français', 'Anglais', 'Histoire-Géo', 'SVT', 'Physique', 'EPS', 'Arts', 'Musique', 'Techno'],
       },

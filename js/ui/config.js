@@ -112,27 +112,14 @@ Object.assign(UI, {
         this.state.profs.forEach(p => {
           if (p.availability) p.availability.forEach(day => day.splice(+b.dataset.del, 1));
         });
+        this.state.config.openSlots.forEach(day => day.splice(+b.dataset.del, 1));
         this.onChange();
         this.renderConfig();
         this.renderProfEditor();
       });
     });
 
-    // days toggles
-    const dt = document.getElementById('days-toggles');
-    dt.innerHTML = '';
-    this.state.config.days.forEach((d, i) => {
-      const btn = document.createElement('span');
-      btn.className = 'day-toggle' + (this.state.config.activeDays[i] ? ' active' : '');
-      btn.textContent = d;
-      btn.addEventListener('click', () => {
-        this.state.config.activeDays[i] = !this.state.config.activeDays[i];
-        this.onChange();
-        this.renderConfig();
-        this.renderProfEditor();
-      });
-      dt.appendChild(btn);
-    });
+    this.renderOpenGrid();
 
     // volumes matrix
     this.renderVolumes();
@@ -141,6 +128,83 @@ Object.assign(UI, {
 
     // Les contraintes dépendent des matières/classes/slots/jours.
     this.renderConstraints();
+  },
+
+  // Grille globale "il y a cours à ce moment-là ?" — ferme des créneaux pour
+  // TOUT LE MONDE (toutes classes et profs), au lieu de peindre "indisponible"
+  // sur chaque prof individuellement pour un même mercredi après-midi.
+  renderOpenGrid() {
+    const { days, slots } = this.state.config;
+    const nd = days.length, ns = slots.length;
+    // Recale la forme si des jours/créneaux ont été ajoutés/retirés (comme
+    // pour prof.availability dans renderProfEditor) : nouveaux créneaux ouverts par défaut.
+    if (!this.state.config.openSlots) this.state.config.openSlots = [];
+    const openSlots = this.state.config.openSlots;
+    while (openSlots.length < nd) openSlots.push(new Array(ns).fill(true));
+    openSlots.length = nd;
+    openSlots.forEach(day => {
+      while (day.length < ns) day.push(true);
+      day.length = ns;
+    });
+
+    const wrap = document.getElementById('open-grid-wrap');
+    wrap.innerHTML = '';
+    const t = document.createElement('table');
+    t.className = 'grid-table';
+    let html = '<thead><tr><th>Créneau</th>';
+    days.forEach(d => html += `<th>${d}</th>`);
+    html += '</tr></thead><tbody>';
+    slots.forEach((sl, si) => {
+      html += `<tr><td class="slot-label">${sl.start} – ${sl.end}</td>`;
+      days.forEach((_, di) => {
+        const on = openSlots[di][si];
+        html += `<td class="cell-avail ${on ? 'on' : ''}" data-d="${di}" data-s="${si}"></td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody>';
+    t.innerHTML = html;
+    wrap.appendChild(t);
+
+    // Drag-to-paint : même mécanique que la grille de dispo des profs.
+    const self = this;
+    const cells = t.querySelectorAll('.cell-avail');
+    const apply = (cell) => {
+      if (!self._paintOpen || !self._paintOpen.active) return;
+      const d = +cell.dataset.d, s = +cell.dataset.s;
+      if (openSlots[d][s] === self._paintOpen.mode) return;
+      openSlots[d][s] = self._paintOpen.mode;
+      cell.classList.toggle('on', self._paintOpen.mode);
+    };
+    cells.forEach(cell => {
+      cell.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const d = +cell.dataset.d, s = +cell.dataset.s;
+        self._paintOpen = { active: true, mode: !openSlots[d][s] };
+        apply(cell);
+      });
+      cell.addEventListener('mouseenter', e => {
+        if (self._paintOpen && self._paintOpen.active && (e.buttons & 1) === 0) {
+          self._paintOpen.active = false;
+          self.onChange();
+          return;
+        }
+        apply(cell);
+      });
+    });
+
+    // Attache le mouseup global une seule fois pour toute la vie de la page
+    // (même mécanique que la grille de dispo des profs).
+    if (!this._paintOpenMouseupBound) {
+      this._paintOpenMouseupBound = true;
+      document.addEventListener('mouseup', () => {
+        if (this._paintOpen && this._paintOpen.active) {
+          this._paintOpen.active = false;
+          this.onChange();
+        }
+      });
+    }
   },
 
   renderVolumes() {

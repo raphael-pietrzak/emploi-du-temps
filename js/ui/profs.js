@@ -205,16 +205,22 @@ Object.assign(UI, {
     wrap.innerHTML = '';
     const t = document.createElement('table');
     t.className = 'grid-table';
+    const activeDays = new Set(this.activeDayIndices());
+    const isClosed = (d, s) => this.state.config.openSlots?.[d]?.[s] === false;
 
     let html = '<thead><tr><th>Créneau</th>';
     this.state.config.days.forEach((d, i) => {
-      if (this.state.config.activeDays[i]) html += `<th>${d}</th>`;
+      if (activeDays.has(i)) html += `<th>${d}</th>`;
     });
     html += '</tr></thead><tbody>';
     this.state.config.slots.forEach((sl, si) => {
       html += `<tr><td class="slot-label">${sl.start} – ${sl.end}</td>`;
       this.state.config.days.forEach((_, di) => {
-        if (!this.state.config.activeDays[di]) return;
+        if (!activeDays.has(di)) return;
+        if (isClosed(di, si)) {
+          html += `<td class="cell-avail closed" data-d="${di}" data-s="${si}" title="Pas cours à ce créneau (fermé pour tout le monde)"></td>`;
+          return;
+        }
         const on = prof.availability[di][si];
         html += `<td class="cell-avail ${on ? 'on' : ''}" data-d="${di}" data-s="${si}"></td>`;
       });
@@ -226,8 +232,10 @@ Object.assign(UI, {
 
     // Drag-to-paint : on ne peint QUE tant que le bouton reste enfoncé.
     // L'état de peinture est porté par `this._paint` pour survivre aux re-renders.
+    // Les créneaux fermés globalement (.closed) ne sont pas peignables : la
+    // disponibilité du prof n'y a aucun effet, le solveur les ignore déjà.
     const self = this;
-    const cells = t.querySelectorAll('.cell-avail');
+    const cells = t.querySelectorAll('.cell-avail:not(.closed)');
 
     const apply = (cell) => {
       if (!self._paint || !self._paint.active) return;

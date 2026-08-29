@@ -201,11 +201,12 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 .bento > .card { margin-bottom: 0; position: relative; overflow: hidden; }
 
 /* Zones du puzzle */
-.bento-grille   { grid-column: span 3; grid-row: span 2; }
-.bento-classes  { grid-column: span 3; }
-.bento-matieres { grid-column: span 3; }
-.bento-options  { grid-column: 1 / -1; }
-.bento-volumes  { grid-column: 1 / -1; }
+.bento-grille    { grid-column: span 3; grid-row: span 2; }
+.bento-openslots { grid-column: 1 / -1; }
+.bento-classes   { grid-column: span 3; }
+.bento-matieres  { grid-column: span 3; }
+.bento-options   { grid-column: 1 / -1; }
+.bento-volumes   { grid-column: 1 / -1; }
 
 
 /* Sur les écrans étroits, on repasse en 2 colonnes puis 1 */
@@ -363,25 +364,6 @@ table th { color: var(--color-text-secondary); font-weight: 500; }
 }
 #add-slot { margin-top: 12px; }
 
-.days-editor { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
-.days-editor label { color: var(--color-text-secondary); font-size: 12px; }
-#days-toggles { display: flex; gap: 4px; }
-#days-toggles .day-toggle {
-  padding: 4px 12px;
-  border-radius: 20px;
-  cursor: pointer;
-  background: var(--color-background-secondary);
-  color: var(--color-text-secondary);
-  border: 1.5px solid transparent;
-  font-size: 12px;
-  font-weight: 500;
-  transition: all 0.15s;
-}
-#days-toggles .day-toggle.active {
-  background: var(--color-background-info);
-  color: var(--color-text-info);
-  border-color: var(--color-border-info);
-}
 
 /* Volumes matrix — compact et lisible */
 .volumes-table {
@@ -581,6 +563,12 @@ input[type="checkbox"] {
   border-color: var(--color-border-success);
 }
 .cell-avail:hover { border-color: var(--color-text-info); }
+.cell-avail.closed {
+  cursor: not-allowed;
+  background: repeating-linear-gradient(45deg, var(--color-background-tertiary), var(--color-background-tertiary) 4px, var(--color-background-secondary) 4px, var(--color-background-secondary) 8px);
+  border-color: var(--color-border-tertiary);
+}
+.cell-avail.closed:hover { border-color: var(--color-border-tertiary); }
 
 /* Schedule cells */
 .cell-sched {

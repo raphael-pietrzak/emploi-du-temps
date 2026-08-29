@@ -14,6 +14,26 @@ const UI = {
     if (!this.state.constraints.pins) this.state.constraints.pins = [];
     if (!this.state.constraints.groups) this.state.constraints.groups = [];
     if (!this.state.constraints.spread) this.state.constraints.spread = [];
+
+    // Migration : "jours actifs" (booléen par jour) → "créneaux ouverts"
+    // (booléen par jour ET créneau), qui permet de fermer une demi-journée
+    // (ex: mercredi après-midi) sans faire semblant que tous les profs sont
+    // indisponibles. Un ancien jour désactivé devient tous ses créneaux fermés.
+    const { config } = this.state;
+    const nd = config.days.length, ns = config.slots.length;
+    if (!config.openSlots) {
+      config.openSlots = config.days.map((_, i) =>
+        new Array(ns).fill(config.activeDays ? !!config.activeDays[i] : true)
+      );
+    }
+    delete config.activeDays;
+    // Recale la forme si des jours/créneaux ont été ajoutés/retirés entre-temps.
+    while (config.openSlots.length < nd) config.openSlots.push(new Array(ns).fill(true));
+    config.openSlots.length = nd;
+    config.openSlots.forEach(day => {
+      while (day.length < ns) day.push(true);
+      day.length = ns;
+    });
     this.bindTabs();
     this.bindIO();
     this.bindConfig();
@@ -32,6 +52,15 @@ const UI = {
         document.getElementById(buttonId).click();
       }
     });
+  },
+
+  // Indices des jours ayant au moins un créneau ouvert — utilisé partout où
+  // on affichait avant une colonne par "jour actif" (grille de dispo, épingles,
+  // emploi du temps). Un jour entièrement fermé (tous ses créneaux) disparaît
+  // de l'affichage, comme le faisait l'ancien "jour désactivé".
+  activeDayIndices() {
+    const { days, openSlots } = this.state.config;
+    return days.map((_, i) => i).filter(i => (openSlots[i] || []).some(Boolean));
   },
 
   renderAll() {

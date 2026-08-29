@@ -56,7 +56,8 @@ Object.assign(UI, {
   },
 
   renderConstraints() {
-    const { subjects, classes, days, activeDays, slots } = this.state.config;
+    const { subjects, classes, days, slots } = this.state.config;
+    const activeDays = new Set(this.activeDayIndices());
 
     // matière
     const subjSel = document.getElementById('pin-subj');
@@ -87,8 +88,8 @@ Object.assign(UI, {
     const daySel = document.getElementById('pin-day');
     const prevDay = daySel.value;
     daySel.innerHTML = '<option value="">Jour…</option>' +
-      days.map((d, i) => activeDays[i] ? `<option value="${i}">${d}</option>` : '').join('');
-    if (prevDay !== '' && activeDays[+prevDay]) daySel.value = prevDay;
+      days.map((d, i) => activeDays.has(i) ? `<option value="${i}">${d}</option>` : '').join('');
+    if (prevDay !== '' && activeDays.has(+prevDay)) daySel.value = prevDay;
 
     // créneau
     const slotSel = document.getElementById('pin-slot');

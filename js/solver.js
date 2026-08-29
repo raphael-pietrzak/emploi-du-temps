@@ -37,9 +37,21 @@
 function buildContext(state) {
   const { config, profs, volumes, options } = state;
   const constraints = state.constraints || { pins: [] };
-  const dayIdxs = config.activeDays.map((a, i) => a ? i : -1).filter(i => i >= 0);
+  // Il n'y a plus de notion de "jour désactivé" — la grille se ferme
+  // créneau par créneau via config.openSlots[day][slot] (true = il y a
+  // cours). Un jour "off" est simplement un jour dont tous les créneaux
+  // sont fermés. `dayIdxs` reste utile comme raccourci "tous les indices
+  // de jours" pour les boucles ci-dessous.
+  const dayIdxs = config.days.map((_, i) => i);
   const slotCount = config.slots.length;
-  const totalSlotsPerClass = dayIdxs.length * slotCount;
+  const isOpen = (d, s) => config.openSlots?.[d]?.[s] !== false;
+  let totalSlotsPerClass = 0;
+  let openDayCount = 0; // nb de jours ayant au moins un créneau ouvert — utile pour les règles "jours différents"
+  for (const d of dayIdxs) {
+    let dayHasOpen = false;
+    for (let s = 0; s < slotCount; s++) if (isOpen(d, s)) { totalSlotsPerClass++; dayHasOpen = true; }
+    if (dayHasOpen) openDayCount++;
+  }
 
     // ---------- Construction de la demande (volumes bruts) ----------
     // On les stocke dans un dict pour pouvoir décrémenter avec les épingles.
@@ -64,8 +76,8 @@ function buildContext(state) {
     for (const pin of (constraints.pins || [])) {
       const label = `Épingle ${pin.subj} · ${(pin.classes || []).join('+')} · ${config.days[pin.day]} #${pin.slot + 1}`;
       if (!config.subjects.includes(pin.subj)) { pinErrors.push(`${label} : matière inconnue.`); continue; }
-      if (!config.activeDays[pin.day]) { pinErrors.push(`${label} : jour désactivé.`); continue; }
       if (pin.slot < 0 || pin.slot >= slotCount) { pinErrors.push(`${label} : créneau invalide.`); continue; }
+      if (!isOpen(pin.day, pin.slot)) { pinErrors.push(`${label} : ce créneau est fermé (pas cours à ce moment-là).`); continue; }
       let bad = false;
       for (const cls of pin.classes) {
         if (!config.classes.includes(cls)) { pinErrors.push(`${label} : classe ${cls} inconnue.`); bad = true; }
@@ -245,7 +257,7 @@ function buildContext(state) {
       let n = 0;
       for (const d of dayIdxs) {
         for (let s = 0; s < slotCount; s++) {
-          if (prof.availability[d]?.[s] && !pinnedBusyProf[`${prof.id}|${d}|${s}`]) n++;
+          if (isOpen(d, s) && prof.availability[d]?.[s] && !pinnedBusyProf[`${prof.id}|${d}|${s}`]) n++;
         }
       }
       return n;
@@ -287,7 +299,7 @@ function buildContext(state) {
     }
 
     return {
-      ok: true, config, profs, options, dayIdxs, slotCount, totalSlotsPerClass,
+      ok: true, config, profs, options, dayIdxs, slotCount, totalSlotsPerClass, openDayCount, isOpen,
       demand, groups, sessions, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
       pinnedSlotsByClass, groupSlotsByClass, spreadPairs, teachesPair, eligibleFor, availCountFor,
     };
@@ -298,7 +310,7 @@ const Solver = {
     const ctx = buildContext(state);
     if (!ctx.ok) return ctx;
     const {
-      config, profs, options, dayIdxs, slotCount, totalSlotsPerClass,
+      config, profs, options, dayIdxs, slotCount, totalSlotsPerClass, openDayCount, isOpen,
       demand, groups, sessions, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
       pinnedSlotsByClass, groupSlotsByClass, spreadPairs, eligibleFor, availCountFor,
     } = ctx;
@@ -316,8 +328,8 @@ const Solver = {
     // Check 1bis : une règle "jours différents" demande mécaniquement au moins
     // autant de jours actifs que d'heures à répartir.
     for (const d of demand) {
-      if (spreadPairs.has(`${d.cls}|${d.subj}`) && d.hours > dayIdxs.length) {
-        errors.push(`${d.cls} · ${d.subj} : ${d.hours}h à répartir sur des jours différents, mais seulement ${dayIdxs.length} jour(s) actif(s) dans la semaine.`);
+      if (spreadPairs.has(`${d.cls}|${d.subj}`) && d.hours > openDayCount) {
+        errors.push(`${d.cls} · ${d.subj} : ${d.hours}h à répartir sur des jours différents, mais seulement ${openDayCount} jour(s) avec au moins un créneau ouvert dans la semaine.`);
       }
     }
 
@@ -331,6 +343,7 @@ const Solver = {
       let cap = 0;
       for (const dayI of dayIdxs) {
         for (let s = 0; s < slotCount; s++) {
+          if (!isOpen(dayI, s)) continue; // créneau fermé (pas cours)
           if (pinnedBusyClass[`${d.cls}|${dayI}|${s}`]) continue; // classe déjà occupée par une épingle
           if (elig.some(p => p.availability?.[dayI]?.[s] && !pinnedBusyProf[`${p.id}|${dayI}|${s}`])) cap++;
         }
@@ -348,6 +361,7 @@ const Solver = {
       let cap = 0;
       for (const dayI of dayIdxs) {
         for (let s = 0; s < slotCount; s++) {
+          if (!isOpen(dayI, s)) continue;
           if (g.classes.some(cls => pinnedBusyClass[`${cls}|${dayI}|${s}`])) continue;
           if (g.elig.some(p => p.availability?.[dayI]?.[s] && !pinnedBusyProf[`${p.id}|${dayI}|${s}`])) cap++;
         }
@@ -369,9 +383,9 @@ const Solver = {
       if (total > freeCapacity) {
         errors.push(
           `Classe ${cls} : ${total}h à caser mais seulement ${freeCapacity} créneau(x) libre(s) dans la semaine ` +
-          `(${totalSlotsPerClass} créneaux au total = ${dayIdxs.length} jours × ${slotCount}` +
+          `(${totalSlotsPerClass} créneau(x) ouvert(s) au total sur la grille` +
           (pinnedSlots > 0 ? `, dont ${pinnedSlots} déjà occupé(s) par des épingles` : '') +
-          `). Réduis les volumes, ajoute des créneaux/jours, ou déplace des épingles.`
+          `). Réduis les volumes, ouvre plus de créneaux, ou déplace des épingles.`
         );
       }
     }
@@ -436,6 +450,18 @@ const Solver = {
       busyClass[cls][+d][+s] = true;
       const profId = pinnedSchedule[k].profId;
       if (profId) busyProf[profId][+d][+s] = true;
+    }
+
+    // Créneaux fermés (config.openSlots) : marqués "busy" pour TOUTES les
+    // classes et TOUS les profs — comme ça candidatesFor/domainSize (qui ne
+    // vérifient que busyClass/busyProf) les excluent automatiquement, sans
+    // avoir besoin d'un check `isOpen` séparé sur ce chemin très chaud.
+    for (const d of dayIdxs) {
+      for (let s = 0; s < slotCount; s++) {
+        if (isOpen(d, s)) continue;
+        for (const cls of config.classes) busyClass[cls][d][s] = true;
+        for (const p of profs) busyProf[p.id][d][s] = true;
+      }
     }
 
     // Jours déjà utilisés par une paire (cls,subj) sous règle de répartition —
@@ -812,7 +838,7 @@ const Solver = {
   repair(state, partial) {
     const ctx = buildContext(state);
     if (!ctx.ok) return ctx;
-    const { dayIdxs, slotCount, pinnedSchedule, pinnedBusyClass, pinnedBusyProf } = ctx;
+    const { dayIdxs, slotCount, pinnedSchedule, pinnedBusyClass, pinnedBusyProf, isOpen } = ctx;
 
     // Un "item" = une session à placer, qu'elle soit déjà bien casée (dans
     // partial.placements) ou encore manquante (dans partial.missing). Toutes
@@ -831,7 +857,7 @@ const Solver = {
       for (const prof of m.elig) {
         for (const d of dayIdxs) {
           for (let s = 0; s < slotCount; s++) {
-            if (prof.availability?.[d]?.[s]) { seed = { day: d, slot: s, profId: prof.id }; break; }
+            if (isOpen(d, s) && prof.availability?.[d]?.[s]) { seed = { day: d, slot: s, profId: prof.id }; break; }
           }
           if (seed) break;
         }
@@ -899,6 +925,7 @@ const Solver = {
       for (const day of dayIdxs) {
         if (it.spreadKey && (spreadOcc[`${it.spreadKey}|${day}`] || 0) > 0) continue; // jour déjà pris par une autre heure de cette matière/classe
         for (let slot = 0; slot < slotCount; slot++) {
+          if (!isOpen(day, slot)) continue; // créneau fermé (pas cours)
           if (it.classes.some(cls => pinnedBusyClass[`${cls}|${day}|${slot}`])) continue;
           for (const prof of it.elig) {
             if (pinnedBusyProf[`${prof.id}|${day}|${slot}`]) continue;

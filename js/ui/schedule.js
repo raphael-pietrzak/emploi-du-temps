@@ -174,15 +174,16 @@ Object.assign(UI, {
   buildScheduleGrid(cellFor) {
     const t = document.createElement('table');
     t.className = 'grid-table';
+    const activeDays = new Set(this.activeDayIndices());
     let html = '<thead><tr><th>Créneau</th>';
     this.state.config.days.forEach((d, i) => {
-      if (this.state.config.activeDays[i]) html += `<th>${d}</th>`;
+      if (activeDays.has(i)) html += `<th>${d}</th>`;
     });
     html += '</tr></thead><tbody>';
     this.state.config.slots.forEach((sl, si) => {
       html += `<tr><td class="slot-label">${sl.start}–${sl.end}</td>`;
       this.state.config.days.forEach((_, di) => {
-        if (!this.state.config.activeDays[di]) return;
+        if (!activeDays.has(di)) return;
         const c = cellFor(di, si);
         if (c) {
           const pinCls = c.pinned ? ' pinned' : '';
