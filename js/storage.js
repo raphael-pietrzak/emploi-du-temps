@@ -68,6 +68,7 @@ const Storage = {
         pins: [],       // { id, subj, classes:[..], day, slot, profId?: null }
         groups: [],     // { id, subj, classes:[..] (>=2), hours, profId?: null } — regroupées, mais sans jour/créneau imposé
         spread: [],     // { id, subj, classes:[..] } — jamais 2h de cette matière le même jour, pour chaque classe listée
+        meetings: [],   // { id, name, profIds:[..] (>=2, tous obligatoires), classes:[..] (0+), hours, subj?: null }
       },
       options: { noGapsForStudents: true },
     };

@@ -9,11 +9,27 @@ const UI = {
   init(state, onChange) {
     this.state = state;
     this.onChange = onChange;
+    this.migrateState();
+    this.bindTabs();
+    this.bindIO();
+    this.bindConfig();
+    this.bindProfs();
+    this.bindConstraints();
+    this.bindSchedule();
+    this.renderAll();
+  },
+
+  // Met le state à niveau avec la forme attendue par le code actuel. Appelée
+  // au chargement ET après un import JSON (`io.js`) — un fichier exporté il y
+  // a longtemps doit être rattrapé aux deux occasions, pas seulement au tout
+  // premier chargement de la page.
+  migrateState() {
     // Migration : ancien state sans contraintes.
     if (!this.state.constraints) this.state.constraints = { pins: [], groups: [] };
     if (!this.state.constraints.pins) this.state.constraints.pins = [];
     if (!this.state.constraints.groups) this.state.constraints.groups = [];
     if (!this.state.constraints.spread) this.state.constraints.spread = [];
+    if (!this.state.constraints.meetings) this.state.constraints.meetings = [];
 
     // Migration : "jours actifs" (booléen par jour) → "créneaux ouverts"
     // (booléen par jour ET créneau), qui permet de fermer une demi-journée
@@ -34,13 +50,6 @@ const UI = {
       while (day.length < ns) day.push(true);
       day.length = ns;
     });
-    this.bindTabs();
-    this.bindIO();
-    this.bindConfig();
-    this.bindProfs();
-    this.bindConstraints();
-    this.bindSchedule();
-    this.renderAll();
   },
 
   bindEnterToClick(inputId, buttonId) {

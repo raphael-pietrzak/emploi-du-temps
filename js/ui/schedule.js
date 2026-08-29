@@ -57,7 +57,61 @@ Object.assign(UI, {
     });
 
     document.getElementById('view-select').addEventListener('change', () => this.renderSchedule());
+
+    document.getElementById('copy-btn').addEventListener('click', () => {
+      const text = this.buildScheduleText();
+      const status = document.getElementById('solver-status');
+      if (!text) {
+        status.className = 'status err';
+        status.textContent = 'Rien à copier : génère (ou répare) un emploi du temps d\'abord.';
+        return;
+      }
+      navigator.clipboard.writeText(text).then(() => {
+        status.className = 'status ok';
+        status.textContent = 'Emploi du temps (texte) copié dans le presse-papiers.';
+      }).catch(() => {
+        status.className = 'status err';
+        status.textContent = 'Échec de la copie (presse-papiers refusé par le navigateur).';
+      });
+    });
+
     this.updateRepairButton();
+  },
+
+  // Rendu texte brut de toutes les classes (+ réunions sans classe) d'un coup —
+  // pensé pour être collé ailleurs (chat, ticket) afin de déboguer ensemble.
+  // Utilise state.schedule si un emploi du temps complet existe, sinon le
+  // dernier essai partiel (lastPartial) s'il y en a un, pour ne jamais copier
+  // du vide alors qu'un résultat exploitable est affiché à l'écran.
+  buildScheduleText() {
+    const schedule = this.state.schedule || this.lastPartial?.schedule;
+    if (!schedule || Object.keys(schedule).length === 0) return '';
+
+    const { days, slots } = this.state.config;
+    const activeDays = this.activeDayIndices();
+    const cellLabel = (cell) => {
+      if (!cell) return '(libre)';
+      const names = (cell.profIds || [cell.profId])
+        .map(pid => this.state.profs.find(p => p.id === pid)?.name || pid)
+        .join(', ');
+      return `${cell.subj} — ${names || '—'}`;
+    };
+
+    const blocks = [];
+    const renderBlock = (title, keyFor) => {
+      const lines = [`=== ${title} ===`];
+      slots.forEach((sl, si) => {
+        activeDays.forEach(di => {
+          lines.push(`${days[di]} ${sl.start}–${sl.end} : ${cellLabel(schedule[keyFor(di, si)])}`);
+        });
+      });
+      blocks.push(lines.join('\n'));
+    };
+
+    this.state.config.classes.forEach(cls => renderBlock(`Classe ${cls}`, (d, s) => `${cls}|${d}|${s}`));
+    this.meetingsWithoutClass().forEach(m => renderBlock(`Réunion — ${m.name}`, (d, s) => `@meeting:${m.id}|${d}|${s}`));
+
+    return blocks.join('\n\n');
   },
 
   updateRepairButton() {
@@ -94,6 +148,7 @@ Object.assign(UI, {
         cont.appendChild(this.buildClassBlock(view.slice(6)));
       } else {
         this.state.config.classes.forEach(cls => cont.appendChild(this.buildClassBlock(cls)));
+        this.meetingsWithoutClass().forEach(m => cont.appendChild(this.buildMeetingBlock(m)));
       }
       return;
     }
@@ -113,11 +168,39 @@ Object.assign(UI, {
         cont.appendChild(this.buildClassBlock(view.slice(6), schedule, true));
       } else {
         this.state.config.classes.forEach(cls => cont.appendChild(this.buildClassBlock(cls, schedule, true)));
+        this.meetingsWithoutClass().forEach(m => cont.appendChild(this.buildMeetingBlock(m, schedule)));
       }
       return;
     }
 
     cont.innerHTML = '<p class="hint">Aucun emploi du temps généré. Clique sur "Générer".</p>';
+  },
+
+  // Réunions n'impliquant aucune classe réelle : elles vivent sous une clé
+  // fictive "@meeting:<id>" (voir buildContext dans solver.js) et n'apparaissent
+  // donc jamais via buildClassBlock — il leur faut leur propre bloc d'affichage.
+  meetingsWithoutClass() {
+    return (this.state.constraints.meetings || []).filter(m => !m.classes || m.classes.length === 0);
+  },
+
+  buildMeetingBlock(meeting, schedule = this.state.schedule) {
+    const pseudoKey = `@meeting:${meeting.id}`;
+    const wrap = document.createElement('div');
+    wrap.className = 'class-block';
+    const h = document.createElement('h3');
+    h.textContent = 'Réunion — ' + meeting.name;
+    wrap.appendChild(h);
+    const grid = this.buildScheduleGrid((d, s) => {
+      const cell = schedule[`${pseudoKey}|${d}|${s}`];
+      if (!cell) return null;
+      const names = (cell.profIds || [cell.profId])
+        .map(pid => this.state.profs.find(p => p.id === pid)?.name || pid)
+        .join(', ');
+      return { top: meeting.name, bottom: names, pinned: false };
+    });
+    // Lecture seule : le swap ne sait pas gérer les cellules multi-profs sans classe.
+    wrap.appendChild(grid);
+    return wrap;
   },
 
   buildClassBlock(cls, schedule = this.state.schedule, readOnly = false) {
@@ -129,8 +212,9 @@ Object.assign(UI, {
     const grid = this.buildScheduleGrid((d, s) => {
       const cell = schedule[`${cls}|${d}|${s}`];
       if (!cell) return null;
-      const prof = this.state.profs.find(p => p.id === cell.profId);
-      return { top: cell.subj, bottom: prof ? prof.name : '—', pinned: !!cell.pinned };
+      const profIds = cell.profIds || [cell.profId];
+      const names = profIds.map(pid => this.state.profs.find(p => p.id === pid)?.name || pid).join(', ');
+      return { top: cell.subj, bottom: names || '—', pinned: !!cell.pinned };
     });
     // Marque chaque cellule avec sa classe : le swap peut être cross-classe.
     grid.querySelectorAll('.cell-sched').forEach(td => {
@@ -138,7 +222,9 @@ Object.assign(UI, {
       const key = `${cls}|${td.dataset.d}|${td.dataset.s}`;
       const cell = schedule[key];
       if (cell?.pinned) td.classList.add('pinned');
-      if (readOnly || cell?.pinned) return; // pas de swap en lecture seule ou sur une épingle
+      // Épingle, lecture seule, ou cellule multi-profs (réunion/cours co-enseigné) :
+      // le swap suppose un seul prof par cellule, donc pas de swap ici.
+      if (readOnly || cell?.pinned || cell?.meeting) return;
       td.classList.add('swappable');
       td.addEventListener('click', () => this.handleSwapClick(td));
     });
@@ -153,18 +239,23 @@ Object.assign(UI, {
     const h = document.createElement('h3');
     h.textContent = 'Prof ' + (prof ? prof.name : profId);
     wrap.appendChild(h);
+    // Une réunion sans classe vit sous une clé fictive "@meeting:<id>" (voir
+    // buildContext dans solver.js) : il faut aussi la scanner ici pour que ce
+    // prof la voie apparaître dans SON emploi du temps.
+    const meetingKeys = this.meetingsWithoutClass().map(m => `@meeting:${m.id}`);
     wrap.appendChild(this.buildScheduleGrid((d, s) => {
-      // Un prof peut apparaître sur plusieurs classes (épingle/groupe multi-classes).
+      // Un prof peut apparaître sur plusieurs classes (épingle/groupe multi-classes)
+      // et/ou via une réunion à plusieurs profs obligatoires (cell.profIds).
       const found = [];
-      for (const cls of this.state.config.classes) {
+      for (const cls of this.state.config.classes.concat(meetingKeys)) {
         const cell = schedule[`${cls}|${d}|${s}`];
-        if (cell && cell.profId === profId) found.push({ cls, cell });
+        if (cell && (cell.profIds || [cell.profId]).includes(profId)) found.push({ cls, cell });
       }
       if (found.length === 0) return null;
       const pinned = found.some(f => f.cell.pinned);
       return {
         top: found[0].cell.subj,
-        bottom: found.map(f => f.cls).join(', '),
+        bottom: found.map(f => f.cls.startsWith('@meeting:') ? 'réunion' : f.cls).join(', '),
         pinned,
       };
     }));

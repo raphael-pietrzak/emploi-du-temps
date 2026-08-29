@@ -157,6 +157,20 @@
         </div>
         <ul id="spread-list" class="pins-list"></ul>
       </div>
+
+      <div class="card">
+        <h2>Réunions & cours à plusieurs profs</h2>
+        <p class="hint">Bloque un créneau commun à PLUSIEURS profs obligatoires en même temps (contrairement à une épingle/un groupe, aucun prof n'est interchangeable ici) — le solveur cherche lui-même quand. Concerne 0 classe (réunion pédagogique) ou 1+ classes (cours co-enseigné, avec matière à consommer sur le volume horaire).</p>
+        <div class="pin-form">
+          <input id="meeting-name" placeholder="Nom (ex: Réunion pédagogique)">
+          <select id="meeting-subj"></select>
+          <div id="meeting-classes" class="pin-classes"></div>
+          <input type="number" id="meeting-hours" min="1" value="1" placeholder="Heures" title="Nombre d'heures par semaine">
+          <div id="meeting-profs" class="pin-classes"></div>
+          <button id="add-meeting">Créer</button>
+        </div>
+        <ul id="meetings-list" class="pins-list"></ul>
+      </div>
     </section>
 
     <!-- =============== SCHEDULE =============== -->
@@ -166,6 +180,7 @@
           <div class="generate-group">
             <button id="generate-btn" class="primary">Générer l'emploi du temps</button>
             <button id="repair-btn" disabled title="Complète par recherche locale le meilleur essai obtenu (rapide, mais ne peut pas prouver qu'une configuration est impossible).">Réparer</button>
+            <button id="copy-btn" title="Copie l'emploi du temps de toutes les classes au format texte (pour le partager ou déboguer).">Copier (texte)</button>
           </div>
           <div class="view-picker">
             <label>Vue :</label>

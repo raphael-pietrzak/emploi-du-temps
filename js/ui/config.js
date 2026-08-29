@@ -150,7 +150,7 @@ Object.assign(UI, {
     const wrap = document.getElementById('open-grid-wrap');
     wrap.innerHTML = '';
     const t = document.createElement('table');
-    t.className = 'grid-table';
+    t.className = 'grid-table compact';
     let html = '<thead><tr><th>Créneau</th>';
     days.forEach(d => html += `<th>${d}</th>`);
     html += '</tr></thead><tbody>';

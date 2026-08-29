@@ -201,8 +201,8 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 .bento > .card { margin-bottom: 0; position: relative; overflow: hidden; }
 
 /* Zones du puzzle */
-.bento-grille    { grid-column: span 3; grid-row: span 2; }
-.bento-openslots { grid-column: 1 / -1; }
+.bento-grille    { grid-column: span 2; grid-row: span 2; }
+.bento-openslots { grid-column: span 4; }
 .bento-classes   { grid-column: span 3; }
 .bento-matieres  { grid-column: span 3; }
 .bento-options   { grid-column: 1 / -1; }
@@ -212,7 +212,8 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 /* Sur les écrans étroits, on repasse en 2 colonnes puis 1 */
 @media (max-width: 1100px) {
   .bento { grid-template-columns: repeat(4, 1fr); }
-  .bento-grille   { grid-column: span 4; grid-row: auto; }
+  .bento-grille    { grid-column: span 4; grid-row: auto; }
+  .bento-openslots { grid-column: span 4; }
   .bento-classes  { grid-column: span 2; }
   .bento-matieres { grid-column: span 2; }
   .bento-options  { grid-column: span 4; }
@@ -531,6 +532,19 @@ input[type="checkbox"] {
   height: 38px;
   min-width: 90px;
   border-radius: var(--border-radius-sm);
+}
+/* Variante compacte : pour la grille "créneaux actifs", utilisée rarement,
+   pas besoin qu'elle soit aussi grande que les grilles de dispo/emploi du temps. */
+.grid-table.compact { width: auto; border-spacing: 2px; }
+.grid-table.compact th, .grid-table.compact td {
+  height: 22px;
+  min-width: 34px;
+  font-size: 10px;
+}
+.grid-table.compact td.slot-label {
+  min-width: 64px;
+  font-size: 10px;
+  padding: 2px 6px;
 }
 .grid-table th {
   background: var(--color-background-secondary);

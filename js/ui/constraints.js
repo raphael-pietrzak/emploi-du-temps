@@ -53,6 +53,28 @@ Object.assign(UI, {
       this.onChange();
       this.renderConstraints();
     });
+
+    document.getElementById('add-meeting').addEventListener('click', () => {
+      const name = document.getElementById('meeting-name').value.trim();
+      const subj = document.getElementById('meeting-subj').value || null;
+      const hours = +document.getElementById('meeting-hours').value;
+      const classes = Array.from(document.querySelectorAll('#meeting-classes .chip.active'))
+        .map(el => el.dataset.cls);
+      const profIds = Array.from(document.querySelectorAll('#meeting-profs .chip.active'))
+        .map(el => el.dataset.profId);
+      if (!name) { alert('Indique un nom.'); return; }
+      if (profIds.length < 2) { alert('Sélectionne au moins 2 profs (tous obligatoires).'); return; }
+      if (subj && classes.length === 0) { alert('Une matière est indiquée : sélectionne au moins une classe.'); return; }
+      if (!Number.isInteger(hours) || hours < 1) { alert('Indique un nombre d\'heures valide.'); return; }
+      this.state.constraints.meetings.push({
+        id: 'meeting_' + Date.now(),
+        name, subj, classes, profIds, hours,
+      });
+      document.getElementById('meeting-name').value = '';
+      document.getElementById('meeting-hours').value = '1';
+      this.onChange();
+      this.renderConstraints();
+    });
   },
 
   renderConstraints() {
@@ -192,6 +214,57 @@ Object.assign(UI, {
         this.renderConstraints();
       });
       spList.appendChild(li);
+    });
+
+    // ---------- Réunions & cours à plusieurs profs ----------
+    const mSubjSel = document.getElementById('meeting-subj');
+    const prevMSubj = mSubjSel.value;
+    mSubjSel.innerHTML = '<option value="">Aucune (réunion sans matière)</option>' +
+      subjects.map(s => `<option value="${s}">${s}</option>`).join('');
+    if (subjects.includes(prevMSubj)) mSubjSel.value = prevMSubj;
+
+    const mClsWrap = document.getElementById('meeting-classes');
+    const prevMActive = new Set(
+      Array.from(mClsWrap.querySelectorAll('.chip.active')).map(el => el.dataset.cls)
+    );
+    mClsWrap.innerHTML = '';
+    classes.forEach(cl => {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (prevMActive.has(cl) ? ' active' : '');
+      chip.dataset.cls = cl;
+      chip.textContent = cl;
+      chip.addEventListener('click', () => chip.classList.toggle('active'));
+      mClsWrap.appendChild(chip);
+    });
+
+    const mProfWrap = document.getElementById('meeting-profs');
+    const prevMProfActive = new Set(
+      Array.from(mProfWrap.querySelectorAll('.chip.active')).map(el => el.dataset.profId)
+    );
+    mProfWrap.innerHTML = '';
+    this.state.profs.forEach(p => {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (prevMProfActive.has(p.id) ? ' active' : '');
+      chip.dataset.profId = p.id;
+      chip.textContent = p.name;
+      chip.addEventListener('click', () => chip.classList.toggle('active'));
+      mProfWrap.appendChild(chip);
+    });
+
+    const mList = document.getElementById('meetings-list');
+    mList.innerHTML = '';
+    (this.state.constraints.meetings || []).forEach(m => {
+      const li = document.createElement('li');
+      const profNames = m.profIds.map(pid => this.state.profs.find(p => p.id === pid)?.name || pid).join(', ');
+      const clsTxt = m.classes.length ? m.classes.join(' + ') : 'aucune classe';
+      const subjTxt = m.subj ? ` (${m.subj})` : '';
+      li.innerHTML = `<span><strong>${m.name}</strong>${subjTxt} — ${clsTxt} — ${m.hours}h — profs obligatoires : ${profNames}</span><button title="Retirer">×</button>`;
+      li.querySelector('button').addEventListener('click', () => {
+        this.state.constraints.meetings = this.state.constraints.meetings.filter(x => x.id !== m.id);
+        this.onChange();
+        this.renderConstraints();
+      });
+      mList.appendChild(li);
     });
   },
 

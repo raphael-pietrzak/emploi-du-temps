@@ -37,6 +37,8 @@
 function buildContext(state) {
   const { config, profs, volumes, options } = state;
   const constraints = state.constraints || { pins: [] };
+  const profsById = {};
+  for (const p of profs) profsById[p.id] = p;
   // Il n'y a plus de notion de "jour désactivé" — la grille se ferme
   // créneau par créneau via config.openSlots[day][slot] (true = il y a
   // cours). Un jour "off" est simplement un jour dont tous les créneaux
@@ -237,7 +239,65 @@ function buildContext(state) {
       return { ok: false, message: 'Règles de répartition invalides :\n• ' + spreadErrors.join('\n• ') };
     }
 
-    // Reconstitution de la demande post-épingles/groupes.
+    // ---------- Réunions / cours à plusieurs profs obligatoires ----------
+    // Une "réunion" : (profIds[] >=2, classes[] optionnel, hours, subj optionnel,
+    // name) — contrairement à un groupe, les profs ne sont PAS choisis parmi
+    // des éligibles : ils sont TOUS obligatoires simultanément (ex: réunion
+    // pédagogique sans classe, ou cours co-enseigné à plusieurs profs). Si
+    // `subj` est renseigné, décrémente le volume des classes listées comme un
+    // groupe ; sinon c'est un simple blocage d'agenda (aucun volume touché).
+    // Sans classe du tout (réunion pure), on invente une classe fictive
+    // ("@meeting:id") qui ne fait partie d'aucune liste réelle — juste un
+    // support pour que le modèle "sessions.classes" existant marche tel quel.
+    const meetings = [];
+    const meetingErrors = [];
+    for (const m of (constraints.meetings || [])) {
+      const label = `Réunion ${m.name || '(sans nom)'}`;
+      if (!m.name) { meetingErrors.push(`${label} : nom manquant.`); continue; }
+      const hours = m.hours || 0;
+      if (hours < 1) { meetingErrors.push(`${label} : nombre d'heures invalide.`); continue; }
+      const profIds = m.profIds || [];
+      if (profIds.length < 2) { meetingErrors.push(`${label} : sélectionne au moins 2 profs.`); continue; }
+      let bad = false;
+      for (const pid of profIds) {
+        if (!profsById[pid]) { meetingErrors.push(`${label} : prof inconnu.`); bad = true; }
+      }
+      if (bad) continue;
+      const classes = m.classes || [];
+      for (const cls of classes) {
+        if (!config.classes.includes(cls)) { meetingErrors.push(`${label} : classe ${cls} inconnue.`); bad = true; }
+      }
+      if (bad) continue;
+      if (m.subj) {
+        if (!config.subjects.includes(m.subj)) { meetingErrors.push(`${label} : matière inconnue.`); continue; }
+        if (classes.length === 0) { meetingErrors.push(`${label} : une matière est indiquée mais aucune classe n'est sélectionnée.`); continue; }
+        for (const cls of classes) {
+          const k = `${cls}|${m.subj}`;
+          if ((demandMap[k] || 0) < hours) {
+            meetingErrors.push(`${label} : ${cls} n'a que ${demandMap[k] || 0}h de ${m.subj} restante(s), il en faut ${hours}.`);
+            bad = true;
+          }
+        }
+        if (bad) continue;
+        for (const cls of classes) {
+          demandMap[`${cls}|${m.subj}`] -= hours;
+          if (demandMap[`${cls}|${m.subj}`] === 0) delete demandMap[`${cls}|${m.subj}`];
+        }
+      }
+      meetings.push({ id: m.id, name: m.name, subj: m.subj || null, classes, profIds, hours });
+    }
+    if (meetingErrors.length > 0) {
+      return { ok: false, message: 'Réunions invalides :\n• ' + meetingErrors.join('\n• ') };
+    }
+
+    // Créneaux d'une classe consommés par des réunions (toutes matières
+    // confondues, y compris les réunions sans matière) — comme groupSlotsByClass.
+    const meetingSlotsByClass = {};
+    for (const m of meetings) {
+      for (const cls of m.classes) meetingSlotsByClass[cls] = (meetingSlotsByClass[cls] || 0) + m.hours;
+    }
+
+    // Reconstitution de la demande post-épingles/groupes/réunions.
     const demand = [];
     for (const cls of config.classes) {
       for (const subj of config.subjects) {
@@ -245,7 +305,7 @@ function buildContext(state) {
         if (h > 0) demand.push({ cls, subj, hours: h });
       }
     }
-    if (demand.length === 0 && Object.keys(pinnedSchedule).length === 0 && groups.length === 0) {
+    if (demand.length === 0 && Object.keys(pinnedSchedule).length === 0 && groups.length === 0 && meetings.length === 0) {
       return { ok: false, message: 'Aucun volume horaire renseigné. Va dans Configuration → Volumes horaires.' };
     }
 
@@ -297,11 +357,28 @@ function buildContext(state) {
       // porte sur SA propre semaine) — pas de sens pour un groupe multi-classes.
       for (let i = 0; i < g.hours; i++) sessions.push({ classes: g.classes, subj: g.subj, elig: g.elig, spreadKey: null });
     }
+    for (const m of meetings) {
+      const elig = m.profIds.map(pid => profsById[pid]);
+      const classesForSession = m.classes.length ? m.classes : [`@meeting:${m.id}`];
+      for (let i = 0; i < m.hours; i++) {
+        sessions.push({
+          classes: classesForSession, subj: m.subj || m.name, elig, allRequired: true,
+          spreadKey: null, meetingId: m.id, meetingName: m.name,
+        });
+      }
+    }
+
+    // Union de toutes les "classes" apparaissant dans les sessions — inclut
+    // les classes réelles ET les classes fictives des réunions sans classe.
+    // Sert à initialiser busyClass sur le bon ensemble de clés dans solve()/repair().
+    const allSessionClasses = new Set(config.classes);
+    sessions.forEach(s => s.classes.forEach(c => allSessionClasses.add(c)));
 
     return {
       ok: true, config, profs, options, dayIdxs, slotCount, totalSlotsPerClass, openDayCount, isOpen,
-      demand, groups, sessions, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
-      pinnedSlotsByClass, groupSlotsByClass, spreadPairs, teachesPair, eligibleFor, availCountFor,
+      demand, groups, meetings, sessions, allSessionClasses, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
+      pinnedSlotsByClass, groupSlotsByClass, meetingSlotsByClass, spreadPairs, teachesPair, eligibleFor, availCountFor,
+      profsById,
     };
 }
 
@@ -311,8 +388,8 @@ const Solver = {
     if (!ctx.ok) return ctx;
     const {
       config, profs, options, dayIdxs, slotCount, totalSlotsPerClass, openDayCount, isOpen,
-      demand, groups, sessions, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
-      pinnedSlotsByClass, groupSlotsByClass, spreadPairs, eligibleFor, availCountFor,
+      demand, groups, meetings, sessions, allSessionClasses, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
+      pinnedSlotsByClass, groupSlotsByClass, meetingSlotsByClass, spreadPairs, eligibleFor, availCountFor,
     } = ctx;
 
     // ---------- Pré-vérifications ----------
@@ -372,12 +449,33 @@ const Solver = {
       }
     });
 
+    // Check 2ter : idem que Check 2bis mais pour les réunions — le créneau doit
+    // convenir à toutes les classes concernées (s'il y en a) ET à TOUS les
+    // profs requis (pas de choix, ils doivent tous être libres à la fois).
+    const flaggedMeetings = new Set();
+    meetings.forEach((m, mi) => {
+      let cap = 0;
+      for (const dayI of dayIdxs) {
+        for (let s = 0; s < slotCount; s++) {
+          if (!isOpen(dayI, s)) continue;
+          if (m.classes.some(cls => pinnedBusyClass[`${cls}|${dayI}|${s}`])) continue;
+          if (m.profIds.some(pid => pinnedBusyProf[`${pid}|${dayI}|${s}`])) continue;
+          if (m.profIds.every(pid => ctx.profsById[pid].availability?.[dayI]?.[s])) cap++;
+        }
+      }
+      if (cap < m.hours) {
+        const names = m.profIds.map(pid => ctx.profsById[pid].name).join(', ');
+        errors.push(`Réunion "${m.name}" : ${m.hours}h à caser mais seulement ${cap} créneau(x) où TOUS ces profs (${names}) sont libres en même temps${m.classes.length ? ' et où ces classes sont libres' : ''}.`);
+        flaggedMeetings.add(mi);
+      }
+    });
+
     // Check 3 : total d'heures d'une classe (hors épingles, donc "à caser" par le
-    // solveur — y compris ses regroupements) > nombre de créneaux VRAIMENT libres
-    // de la semaine, c'est-à-dire le total de la grille MOINS les créneaux déjà
-    // pris par les épingles de cette classe.
+    // solveur — y compris ses regroupements et réunions) > nombre de créneaux
+    // VRAIMENT libres de la semaine, c'est-à-dire le total de la grille MOINS
+    // les créneaux déjà pris par les épingles de cette classe.
     for (const cls of config.classes) {
-      const total = demand.filter(d => d.cls === cls).reduce((s, d) => s + d.hours, 0) + (groupSlotsByClass[cls] || 0);
+      const total = demand.filter(d => d.cls === cls).reduce((s, d) => s + d.hours, 0) + (groupSlotsByClass[cls] || 0) + (meetingSlotsByClass[cls] || 0);
       const pinnedSlots = pinnedSlotsByClass[cls] || 0;
       const freeCapacity = totalSlotsPerClass - pinnedSlots;
       if (total > freeCapacity) {
@@ -416,6 +514,17 @@ const Solver = {
         (subjectsByProf[pid] = subjectsByProf[pid] || new Set()).add(`${g.subj} (groupe ${g.classes.join('+')})`);
       }
     });
+    // Les réunions sont TOUJOURS exclusives pour chacun des profs requis (par
+    // construction, personne d'autre ne peut les remplacer).
+    meetings.forEach((m, mi) => {
+      for (const pid of m.profIds) {
+        exclusiveByProf[pid] = (exclusiveByProf[pid] || 0) + m.hours;
+        if (!flaggedMeetings.has(mi)) {
+          remainingByProf[pid] = (remainingByProf[pid] || 0) + m.hours;
+          (subjectsByProf[pid] = subjectsByProf[pid] || new Set()).add(`${m.name} (réunion)`);
+        }
+      }
+    });
     for (const p of profs) {
       const remaining = remainingByProf[p.id] || 0;
       if (remaining === 0) continue;  // tout déjà signalé plus finement par Check 2
@@ -434,8 +543,10 @@ const Solver = {
     }
 
     // ---------- Préparation de la recherche ----------
+    // `allSessionClasses` inclut les classes réelles ET les classes fictives
+    // des réunions sans classe (voir buildContext) — busyClass doit couvrir les deux.
     const busyClass = {};
-    for (const cls of config.classes) {
+    for (const cls of allSessionClasses) {
       busyClass[cls] = config.days.map(() => new Array(slotCount).fill(false));
     }
     const busyProf = {};
@@ -459,7 +570,7 @@ const Solver = {
     for (const d of dayIdxs) {
       for (let s = 0; s < slotCount; s++) {
         if (isOpen(d, s)) continue;
-        for (const cls of config.classes) busyClass[cls][d][s] = true;
+        for (const cls of allSessionClasses) busyClass[cls][d][s] = true;
         for (const p of profs) busyProf[p.id][d][s] = true;
       }
     }
@@ -491,28 +602,40 @@ const Solver = {
         (sessionsBySpreadKey[sess.spreadKey] = sessionsBySpreadKey[sess.spreadKey] || []).push(idx);
       }
     });
-    const affectedBy = (classesArr, profId, spreadKey) => {
+    const affectedBy = (classesArr, profIds, spreadKey) => {
       const set = new Set();
       for (const cls of classesArr) {
         for (const idx of (sessionsByClass[cls] || [])) set.add(idx);
       }
-      for (const idx of (sessionsByProf[profId] || [])) set.add(idx);
+      for (const pid of profIds) {
+        for (const idx of (sessionsByProf[pid] || [])) set.add(idx);
+      }
       if (spreadKey) {
         for (const idx of (sessionsBySpreadKey[spreadKey] || [])) set.add(idx);
       }
       return set;
     };
 
+    // Pour une session "allRequired" (réunion / cours co-enseigné), les profs
+    // ne sont pas choisis parmi des éligibles : TOUS ceux de `elig` doivent
+    // être libres au même (jour, slot) — un seul candidat possible par (jour,
+    // slot), pas un par prof éligible comme pour une session normale.
     const candidatesFor = (sess) => {
       const list = [];
       for (const d of dayIdxs) {
         if (sess.spreadKey && spreadUsedDay[`${sess.spreadKey}|${d}`]) continue; // jour déjà pris par une autre heure de cette matière/classe
         for (let s = 0; s < slotCount; s++) {
           if (sess.classes.some(cls => busyClass[cls][d][s])) continue; // TOUTES les classes doivent être libres
-          for (const prof of sess.elig) {
-            if (busyProf[prof.id][d][s]) continue;
-            if (!prof.availability?.[d]?.[s]) continue;
-            list.push({ day: d, slot: s, profId: prof.id });
+          if (sess.allRequired) {
+            if (sess.elig.some(p => busyProf[p.id][d][s])) continue;
+            if (sess.elig.some(p => !p.availability?.[d]?.[s])) continue;
+            list.push({ day: d, slot: s, profIds: sess.elig.map(p => p.id) });
+          } else {
+            for (const prof of sess.elig) {
+              if (busyProf[prof.id][d][s]) continue;
+              if (!prof.availability?.[d]?.[s]) continue;
+              list.push({ day: d, slot: s, profIds: [prof.id] });
+            }
           }
         }
       }
@@ -527,8 +650,12 @@ const Solver = {
         if (sess.spreadKey && spreadUsedDay[`${sess.spreadKey}|${d}`]) continue;
         for (let s = 0; s < slotCount; s++) {
           if (sess.classes.some(cls => busyClass[cls][d][s])) continue;
-          for (const prof of sess.elig) {
-            if (!busyProf[prof.id][d][s] && prof.availability?.[d]?.[s]) n++;
+          if (sess.allRequired) {
+            if (sess.elig.every(p => !busyProf[p.id][d][s] && p.availability?.[d]?.[s])) n++;
+          } else {
+            for (const prof of sess.elig) {
+              if (!busyProf[prof.id][d][s] && prof.availability?.[d]?.[s]) n++;
+            }
           }
         }
       }
@@ -546,9 +673,9 @@ const Solver = {
     // domaine vient de tomber à 0 : c'est le forward-checking qui anticipe un
     // blocage futur AVANT de récurser dedans, au lieu de le découvrir
     // plusieurs niveaux plus bas.
-    const applyDelta = (classesArr, profId, checkWipeout, spreadKey) => {
+    const applyDelta = (classesArr, profIds, checkWipeout, spreadKey) => {
       const wiped = [];
-      for (const idx of affectedBy(classesArr, profId, spreadKey)) {
+      for (const idx of affectedBy(classesArr, profIds, spreadKey)) {
         if (assigned[idx]) continue;
         domCache[idx] = domainSize(idx);
         if (checkWipeout && domCache[idx] === 0) wiped.push(idx);
@@ -604,17 +731,19 @@ const Solver = {
     // (pas de Web Worker). C'est pour ça que le budget en itérations est fixé
     // très haut par défaut : c'est le temps réel (piloté par l'utilisateur
     // via l'UI) qui doit gouverner en pratique, pas ce filet de sécurité.
+    // Le budget total est partagé entre PLUSIEURS tentatives (redémarrages),
+    // pas consommé par une seule — voir le commentaire au-dessus de la boucle
+    // de redémarrage plus bas pour pourquoi. `budgetOk`/`aborted`/`iterCount`
+    // sont réaffectés à chaque tentative (via `let`, capturés par référence
+    // dans `backtrack` qui est défini une seule fois) ; `totalIter` cumule
+    // across tentatives pour le message final et pour la limite MAX_ITER globale.
     const startTime = Date.now();
     const TIME_BUDGET_MS = options.solverTimeBudgetMs || 8000;
     const MAX_ITER = options.solverMaxIter || 60000000;
+    let totalIter = 0;
     let iterCount = 0;
     let aborted = false;
-    const budgetOk = () => {
-      iterCount++;
-      if (iterCount > MAX_ITER) { aborted = true; return false; }
-      if ((iterCount & 1023) === 0 && Date.now() - startTime > TIME_BUDGET_MS) { aborted = true; return false; }
-      return true;
-    };
+    let budgetOk = () => false;
 
     const backtrack = () => {
       if (!budgetOk()) return false;
@@ -635,7 +764,8 @@ const Solver = {
         // utilisera pour tenter de compléter par recherche locale.
         bestPlacements = placedStack.map(p => ({
           classes: p.sess.classes, subj: p.sess.subj, elig: p.sess.elig, spreadKey: p.sess.spreadKey,
-          day: p.c.day, slot: p.c.slot, profId: p.c.profId,
+          allRequired: p.sess.allRequired, meetingId: p.sess.meetingId, meetingName: p.sess.meetingName,
+          day: p.c.day, slot: p.c.slot, profIds: p.c.profIds,
         }));
       }
 
@@ -686,9 +816,12 @@ const Solver = {
       for (const c of cands) {
         for (const cls of sess.classes) {
           busyClass[cls][c.day][c.slot] = true;
-          schedule[`${cls}|${c.day}|${c.slot}`] = { profId: c.profId, subj: sess.subj, grouped: sess.classes.length > 1 };
+          schedule[`${cls}|${c.day}|${c.slot}`] = {
+            profId: c.profIds[0], profIds: c.profIds, subj: sess.subj,
+            grouped: sess.classes.length > 1, meeting: !!sess.meetingId, meetingId: sess.meetingId,
+          };
         }
-        busyProf[c.profId][c.day][c.slot] = true;
+        for (const pid of c.profIds) busyProf[pid][c.day][c.slot] = true;
         if (sess.spreadKey) {
           const k = `${sess.spreadKey}|${c.day}`;
           spreadUsedDay[k] = (spreadUsedDay[k] || 0) + 1;
@@ -697,7 +830,7 @@ const Solver = {
 
         // Forward-checking : si ce placement vide le domaine d'une autre
         // session pas encore posée, inutile de récurser — c'est déjà mort.
-        const wiped = applyDelta(sess.classes, c.profId, true, sess.spreadKey);
+        const wiped = applyDelta(sess.classes, c.profIds, true, sess.spreadKey);
         let success = false;
         if (wiped.length === 0) {
           success = backtrack();
@@ -713,13 +846,13 @@ const Solver = {
           busyClass[cls][c.day][c.slot] = false;
           delete schedule[`${cls}|${c.day}|${c.slot}`];
         }
-        busyProf[c.profId][c.day][c.slot] = false;
+        for (const pid of c.profIds) busyProf[pid][c.day][c.slot] = false;
         if (sess.spreadKey) {
           const k = `${sess.spreadKey}|${c.day}`;
           spreadUsedDay[k]--;
           if (spreadUsedDay[k] === 0) delete spreadUsedDay[k];
         }
-        applyDelta(sess.classes, c.profId, false, sess.spreadKey);
+        applyDelta(sess.classes, c.profIds, false, sess.spreadKey);
 
         if (aborted) break;
       }
@@ -731,7 +864,45 @@ const Solver = {
       return false;
     };
 
-    const ok = backtrack();
+    // ---------- Redémarrages : plusieurs tentatives dans le même budget ----------
+    // L'ordre des candidats est mélangé à CHAQUE nœud (voir plus haut) : un
+    // mauvais tirage tôt près de la racine de l'arbre peut faire échouer une
+    // tentative entière en restant bloquée près du début, sans jamais aller
+    // en profondeur — observé concrètement : une tentative peut plafonner à
+    // 31/115 quand une autre, sur la même config, atteint 108/112. Une seule
+    // tentative de 8s mise donc tout sur UN tirage ; en découpant le budget
+    // total en plusieurs tentatives indépendantes (chacune avec un nouveau
+    // mélange), on limite les dégâts d'un tirage malchanceux sans jamais
+    // perdre le meilleur résultat obtenu (deepestCount/bestPlacements/
+    // bestMissing/blockedInfo sont déclarés EN DEHORS de cette boucle : ils
+    // cumulent sur TOUTES les tentatives, jamais réinitialisés entre deux).
+    // Si UNE tentative va au bout de son sous-budget SANS être interrompue
+    // (aborted reste false), c'est une preuve d'impossibilité valable pour
+    // TOUTE la CSP indépendamment de l'ordre de tirage — inutile de retenter,
+    // on s'arrête immédiatement avec ce verdict définitif.
+    // Chaque tentative reçoit une TRANCHE plafonnée du budget restant (pas
+    // "tout ce qui reste") — sinon la 1ère tentative épuiserait la quasi-
+    // totalité du budget total et il n'y aurait jamais de second tirage en
+    // pratique. `solverRestartChunkMs` est un réglage interne (pas exposé en
+    // UI) utilisé pour mesurer/ajuster empiriquement la taille de tranche.
+    const CHUNK_MS = options.solverRestartChunkMs || Math.max(500, Math.min(TIME_BUDGET_MS / 4, 2000));
+    let ok = false;
+    while (true) {
+      const remainingMs = TIME_BUDGET_MS - (Date.now() - startTime);
+      if (remainingMs <= 0 || totalIter >= MAX_ITER) { aborted = true; break; }
+      const attemptBudgetMs = Math.min(CHUNK_MS, remainingMs);
+      iterCount = 0;
+      aborted = false;
+      const attemptStart = Date.now();
+      budgetOk = () => {
+        iterCount++; totalIter++;
+        if (totalIter > MAX_ITER) { aborted = true; return false; }
+        if ((iterCount & 1023) === 0 && Date.now() - attemptStart > attemptBudgetMs) { aborted = true; return false; }
+        return true;
+      };
+      ok = backtrack();
+      if (ok || !aborted) break; // solution trouvée, ou impossibilité prouvée par cette tentative
+    }
 
     if (ok) {
       const nPinnedCells = Object.keys(pinnedSchedule).length;
@@ -790,7 +961,10 @@ const Solver = {
     for (const k of Object.keys(pinnedSchedule)) partialSchedule[k] = pinnedSchedule[k];
     for (const p of bestPlacements) {
       for (const cls of p.classes) {
-        partialSchedule[`${cls}|${p.day}|${p.slot}`] = { profId: p.profId, subj: p.subj, grouped: p.classes.length > 1 };
+        partialSchedule[`${cls}|${p.day}|${p.slot}`] = {
+          profId: p.profIds[0], profIds: p.profIds, subj: p.subj,
+          grouped: p.classes.length > 1, meeting: !!p.meetingId, meetingId: p.meetingId,
+        };
       }
     }
     const partial = { placements: bestPlacements, missing: bestMissing, schedule: partialSchedule };
@@ -801,7 +975,7 @@ const Solver = {
         aborted: true,
         partial,
         message:
-          `Recherche interrompue après ${iterCount.toLocaleString('fr')} itérations (${Date.now() - startTime}ms) ` +
+          `Recherche interrompue après ${totalIter.toLocaleString('fr')} itérations (${Date.now() - startTime}ms) ` +
           `sans conclusion : la configuration n'est ni prouvée possible, ni prouvée impossible — l'espace de recherche est trop grand pour l'explorer entièrement dans le budget imparti.\n` +
           `Meilleur essai atteint : ${deepestCount}/${totalSessions} heures casées simultanément avant blocage.` +
           explainMissing(),
@@ -847,24 +1021,42 @@ const Solver = {
     // épingles (pinnedBusyClass/pinnedBusyProf) restent strictement figées.
     const items = [];
     for (const p of partial.placements) {
-      items.push({ classes: p.classes, subj: p.subj, elig: p.elig, spreadKey: p.spreadKey || null, day: p.day, slot: p.slot, profId: p.profId });
+      items.push({
+        classes: p.classes, subj: p.subj, elig: p.elig, spreadKey: p.spreadKey || null,
+        allRequired: !!p.allRequired, meetingId: p.meetingId || null,
+        day: p.day, slot: p.slot, profIds: p.profIds || [p.profId],
+      });
     }
     for (const m of partial.missing) {
-      // Amorce arbitraire : premier (jour, slot, prof éligible) où le prof est
-      // réellement disponible (hors épingles ou pas — min-conflicts va de
-      // toute façon immédiatement chercher à résoudre le conflit s'il y en a).
+      // Amorce arbitraire : premier (jour, slot) où le(s) prof(s) requis
+      // sont réellement disponibles (hors épingles ou pas — min-conflicts va
+      // de toute façon immédiatement chercher à résoudre le conflit s'il y en a).
       let seed = null;
-      for (const prof of m.elig) {
+      if (m.allRequired) {
         for (const d of dayIdxs) {
           for (let s = 0; s < slotCount; s++) {
-            if (isOpen(d, s) && prof.availability?.[d]?.[s]) { seed = { day: d, slot: s, profId: prof.id }; break; }
+            if (isOpen(d, s) && m.elig.every(prof => prof.availability?.[d]?.[s])) { seed = { day: d, slot: s, profIds: m.elig.map(p => p.id) }; break; }
           }
           if (seed) break;
         }
-        if (seed) break;
+        if (!seed) seed = { day: dayIdxs[0], slot: 0, profIds: m.elig.map(p => p.id) };
+      } else {
+        for (const prof of m.elig) {
+          for (const d of dayIdxs) {
+            for (let s = 0; s < slotCount; s++) {
+              if (isOpen(d, s) && prof.availability?.[d]?.[s]) { seed = { day: d, slot: s, profIds: [prof.id] }; break; }
+            }
+            if (seed) break;
+          }
+          if (seed) break;
+        }
+        if (!seed) seed = { day: dayIdxs[0], slot: 0, profIds: [m.elig[0].id] }; // ne devrait pas arriver (Check1/2 l'auraient déjà signalé)
       }
-      if (!seed) seed = { day: dayIdxs[0], slot: 0, profId: m.elig[0].id }; // ne devrait pas arriver (Check1/2 l'auraient déjà signalé)
-      items.push({ classes: m.classes, subj: m.subj, elig: m.elig, spreadKey: m.spreadKey || null, day: seed.day, slot: seed.slot, profId: seed.profId });
+      items.push({
+        classes: m.classes, subj: m.subj, elig: m.elig, spreadKey: m.spreadKey || null,
+        allRequired: !!m.allRequired, meetingId: m.meetingId || null,
+        day: seed.day, slot: seed.slot, profIds: seed.profIds,
+      });
     }
 
     // Occupation courante de chaque (classe|jour|slot) et (prof|jour|slot) —
@@ -879,7 +1071,7 @@ const Solver = {
     for (const key of Object.keys(pinnedBusyProf)) bump(profOcc, key, 1);
     const place = (it, delta) => {
       for (const cls of it.classes) bump(classOcc, `${cls}|${it.day}|${it.slot}`, delta);
-      bump(profOcc, `${it.profId}|${it.day}|${it.slot}`, delta);
+      for (const pid of it.profIds) bump(profOcc, `${pid}|${it.day}|${it.slot}`, delta);
       if (it.spreadKey) bump(spreadOcc, `${it.spreadKey}|${it.day}`, delta);
     };
     items.forEach(it => place(it, 1));
@@ -893,7 +1085,7 @@ const Solver = {
     const conflictsOf = (it) => {
       let n = 0;
       for (const cls of it.classes) n += (classOcc[`${cls}|${it.day}|${it.slot}`] || 0) - 1;
-      n += (profOcc[`${it.profId}|${it.day}|${it.slot}`] || 0) - 1;
+      for (const pid of it.profIds) n += (profOcc[`${pid}|${it.day}|${it.slot}`] || 0) - 1;
       if (it.spreadKey) n += (spreadOcc[`${it.spreadKey}|${it.day}`] || 0) - 1;
       return n;
     };
@@ -927,22 +1119,34 @@ const Solver = {
         for (let slot = 0; slot < slotCount; slot++) {
           if (!isOpen(day, slot)) continue; // créneau fermé (pas cours)
           if (it.classes.some(cls => pinnedBusyClass[`${cls}|${day}|${slot}`])) continue;
-          for (const prof of it.elig) {
-            if (pinnedBusyProf[`${prof.id}|${day}|${slot}`]) continue;
-            if (!prof.availability?.[day]?.[slot]) continue;
+          if (it.allRequired) {
+            if (it.elig.some(p => pinnedBusyProf[`${p.id}|${day}|${slot}`])) continue;
+            if (it.elig.some(p => !p.availability?.[day]?.[slot])) continue;
             let score = 0;
             for (const cls of it.classes) score += (classOcc[`${cls}|${day}|${slot}`] || 0);
-            score += (profOcc[`${prof.id}|${day}|${slot}`] || 0);
-            const opt = { day, slot, profId: prof.id };
+            for (const p of it.elig) score += (profOcc[`${p.id}|${day}|${slot}`] || 0);
+            const opt = { day, slot, profIds: it.elig.map(p => p.id) };
             allOptions.push(opt);
             if (score < bestScore) { bestScore = score; bestOptions = [opt]; }
             else if (score === bestScore) bestOptions.push(opt);
+          } else {
+            for (const prof of it.elig) {
+              if (pinnedBusyProf[`${prof.id}|${day}|${slot}`]) continue;
+              if (!prof.availability?.[day]?.[slot]) continue;
+              let score = 0;
+              for (const cls of it.classes) score += (classOcc[`${cls}|${day}|${slot}`] || 0);
+              score += (profOcc[`${prof.id}|${day}|${slot}`] || 0);
+              const opt = { day, slot, profIds: [prof.id] };
+              allOptions.push(opt);
+              if (score < bestScore) { bestScore = score; bestOptions = [opt]; }
+              else if (score === bestScore) bestOptions.push(opt);
+            }
           }
         }
       }
       const pool = (allOptions.length > 0 && Math.random() < 0.1) ? allOptions : bestOptions;
-      const choice = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : { day: it.day, slot: it.slot, profId: it.profId };
-      it.day = choice.day; it.slot = choice.slot; it.profId = choice.profId;
+      const choice = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : { day: it.day, slot: it.slot, profIds: it.profIds };
+      it.day = choice.day; it.slot = choice.slot; it.profIds = choice.profIds;
       place(it, 1);
     }
 
@@ -954,7 +1158,10 @@ const Solver = {
       for (const k of Object.keys(pinnedSchedule)) schedule[k] = pinnedSchedule[k];
       for (const it of items) {
         for (const cls of it.classes) {
-          schedule[`${cls}|${it.day}|${it.slot}`] = { profId: it.profId, subj: it.subj, grouped: it.classes.length > 1 };
+          schedule[`${cls}|${it.day}|${it.slot}`] = {
+            profId: it.profIds[0], profIds: it.profIds, subj: it.subj,
+            grouped: it.classes.length > 1, meeting: !!it.meetingId, meetingId: it.meetingId,
+          };
         }
       }
       return {
@@ -988,7 +1195,7 @@ const Solver = {
   analyzeProfLoad(state) {
     const ctx = buildContext(state);
     if (!ctx.ok) return ctx;
-    const { profs, demand, groups, eligibleFor, availCountFor } = ctx;
+    const { profs, demand, groups, meetings, eligibleFor, availCountFor } = ctx;
 
     const exclusiveHours = {};   // profId -> heures
     const exclusiveLabels = {};  // profId -> Set de libellés "matière (classe)"
@@ -1004,6 +1211,13 @@ const Solver = {
       const pid = g.elig[0].id;
       exclusiveHours[pid] = (exclusiveHours[pid] || 0) + g.hours;
       (exclusiveLabels[pid] = exclusiveLabels[pid] || new Set()).add(`${g.subj} (${g.classes.join('+')}, groupe)`);
+    }
+    // Les réunions sont toujours exclusives pour tous les profs requis.
+    for (const m of meetings) {
+      for (const pid of m.profIds) {
+        exclusiveHours[pid] = (exclusiveHours[pid] || 0) + m.hours;
+        (exclusiveLabels[pid] = exclusiveLabels[pid] || new Set()).add(`${m.name} (réunion)`);
+      }
     }
 
     const rows = profs.map(p => {

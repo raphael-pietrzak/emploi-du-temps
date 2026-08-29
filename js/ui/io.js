@@ -9,6 +9,7 @@ Object.assign(UI, {
       try {
         const s = await Storage.import(f);
         Object.assign(this.state, s);
+        this.migrateState();
         this.onChange();
         this.renderAll();
         alert('Import réussi.');
