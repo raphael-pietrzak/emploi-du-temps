@@ -43,6 +43,6 @@ Application vanilla sans build ni modules ES : chaque script est chargé par `in
   volumes: { "classe|matière": heures },
   profs:   [{ id, name, subjectClasses: {matière: [classes]}, availability: [jours][slots] }],
   constraints: { pins: [...], groups: [...] },
-  options: { noGapsForStudents, randomize },
+  options: { noGapsForStudents },
   schedule: { "classe|jour|slot": { subj, profId, pinned } } | null }
 ```

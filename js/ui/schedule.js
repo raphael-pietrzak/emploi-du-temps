@@ -57,12 +57,6 @@ Object.assign(UI, {
     });
 
     document.getElementById('view-select').addEventListener('change', () => this.renderSchedule());
-    const rnd = document.getElementById('opt-randomize');
-    rnd.checked = !!this.state.options.randomize;
-    rnd.addEventListener('change', e => {
-      this.state.options.randomize = e.target.checked;
-      this.onChange();
-    });
     this.updateRepairButton();
   },
 

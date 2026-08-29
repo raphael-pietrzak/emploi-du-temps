@@ -575,41 +575,29 @@ const Solver = {
       // peut de toute façon pas optimiser simultanément pour chaque classe).
       const repCls = sess.classes[0];
 
-      // --- ordre des candidats : préférences utilisateur (soft), inchangé ---
-      if (options.randomize) {
-        // Fisher-Yates : ordre aléatoire des candidats.
-        // Le backtracking reste complet : l'ordre n'élimine aucune solution.
-        for (let i = cands.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [cands[i], cands[j]] = [cands[j], cands[i]];
-        }
-        if (options.noGapsForStudents) {
-          // Stable : on garde le mélange comme tie-breaker.
-          cands.sort((a, b) => {
-            const compact = (c) => {
-              let score = 0;
-              for (let s = c.slot - 1; s <= c.slot + 1; s++) {
-                if (s >= 0 && s < slotCount && busyClass[repCls][c.day][s]) score--;
-              }
-              return score;
-            };
-            return compact(a) - compact(b);
-          });
-        }
-      } else {
+      // --- ordre des candidats ---
+      // Toujours mélangé (Fisher-Yates) : un ordre fixe (ex. toujours le
+      // créneau le plus tôt) peut faire tomber le backtracking dans une
+      // impasse arbitraire et y rester bloqué à l'identique à chaque essai —
+      // observé concrètement : un ordre déterministe restait figé à 30/112
+      // sur un cas réel, contre 107-110/112 en mélangeant (phénomène connu
+      // en recherche combinatoire). Le backtracking reste complet quel que
+      // soit l'ordre : ça ne change que la vitesse, jamais la faisabilité.
+      for (let i = cands.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cands[i], cands[j]] = [cands[j], cands[i]];
+      }
+      if (options.noGapsForStudents) {
+        // Stable : le mélange sert de tie-breaker pour les créneaux à égalité de compacité.
         cands.sort((a, b) => {
-          if (options.noGapsForStudents) {
-            const compact = (c) => {
-              let score = 0;
-              for (let s = c.slot - 1; s <= c.slot + 1; s++) {
-                if (s >= 0 && s < slotCount && busyClass[repCls][c.day][s]) score--;
-              }
-              return score;
-            };
-            const dc = compact(a) - compact(b);
-            if (dc !== 0) return dc;
-          }
-          return a.slot - b.slot;
+          const compact = (c) => {
+            let score = 0;
+            for (let s = c.slot - 1; s <= c.slot + 1; s++) {
+              if (s >= 0 && s < slotCount && busyClass[repCls][c.day][s]) score--;
+            }
+            return score;
+          };
+          return compact(a) - compact(b);
         });
       }
 
