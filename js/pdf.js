@@ -32,6 +32,21 @@ const PDFDoc = (() => {
     return (w / 1000) * size;
   }
 
+  // Tronque `str` (avec "…") pour qu'elle tienne dans maxWidth à la taille
+  // donnée — sans ça, un nom de matière/prof trop long à la taille minimale
+  // déborderait de sa cellule (et donc de son centrage, cf. centerText /
+  // twoLineText) au lieu de rester lisible et bien cadré.
+  function truncateToWidth(str, size, bold, maxWidth) {
+    if (textWidth(str, size, bold) <= maxWidth) return str;
+    let lo = 0, hi = str.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (textWidth(str.slice(0, mid) + '…', size, bold) <= maxWidth) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo > 0 ? str.slice(0, lo).trimEnd() + '…' : '';
+  }
+
   // Unicode -> code CP1252/WinAnsi (identique à Latin-1 pour les lettres
   // accentuées françaises usuelles ; quelques exceptions au-delà de 0xFF).
   const SPECIAL = { 'Œ': 0x8C, 'œ': 0x9C, 'Ÿ': 0x9F, '’': 0x92, '‘': 0x91, '“': 0x93, '”': 0x94, '–': 0x96, '—': 0x97, '…': 0x85 };
@@ -89,29 +104,38 @@ const PDFDoc = (() => {
 
     centerText(x, yTop, w, h, str, { font = 'regular', size = 9, color = '#000000', minSize = 5 } = {}) {
       const bold = font === 'bold';
+      const maxW = w - 4;
       let sz = size;
-      while (sz > minSize && textWidth(str, sz, bold) > w - 4) sz -= 0.5;
-      const tw = textWidth(str, sz, bold);
-      this.text(x + (w - tw) / 2, yTop + h / 2 + sz * 0.32, str, { font, size: sz, color });
+      while (sz > minSize && textWidth(str, sz, bold) > maxW) sz -= 0.5;
+      const out = truncateToWidth(str, sz, bold, maxW);
+      const tw = textWidth(out, sz, bold);
+      this.text(x + (w - tw) / 2, yTop + h / 2 + sz * 0.32, out, { font, size: sz, color });
     }
 
     // Deux lignes centrées comme un bloc, chacune éventuellement dans son
     // propre style (utilisé pour "matière" en gras + "prof" en plus discret).
+    // Chaque ligne est tronquée ("…") si même la taille minimale déborde de
+    // `w` — un nom trop long doit rester dans sa cellule et centré, pas
+    // chevaucher la cellule voisine (bug observé : "Histoire-Géo Claude
+    // Bourelly" débordant sur "Littérature Pierre Boulard" à côté).
     twoLineText(x, yTop, w, h, line1, line2, opts = {}) {
       const { size1 = 11.5, size2 = 10, bold1 = true, color1 = '#000000', color2 = '#444444', minSize = 5 } = opts;
+      const maxW = w - 4;
       let s1 = size1;
-      while (s1 > minSize && textWidth(line1, s1, bold1) > w - 4) s1 -= 0.5;
+      while (s1 > minSize && textWidth(line1, s1, bold1) > maxW) s1 -= 0.5;
       let s2 = line2 ? size2 : 0;
-      while (s2 > minSize && textWidth(line2, s2, false) > w - 4) s2 -= 0.5;
+      while (s2 > minSize && textWidth(line2, s2, false) > maxW) s2 -= 0.5;
+      const out1 = truncateToWidth(line1, s1, bold1, maxW);
+      const out2 = line2 ? truncateToWidth(line2, s2, false, maxW) : '';
       const lh1 = s1 * 1.15, lh2 = line2 ? s2 * 1.15 : 0;
       const blockH = lh1 + lh2;
       let ty = yTop + (h - blockH) / 2 + s1 * 0.8;
-      const w1 = textWidth(line1, s1, bold1);
-      this.text(x + (w - w1) / 2, ty, line1, { font: bold1 ? 'bold' : 'regular', size: s1, color: color1 });
+      const w1 = textWidth(out1, s1, bold1);
+      this.text(x + (w - w1) / 2, ty, out1, { font: bold1 ? 'bold' : 'regular', size: s1, color: color1 });
       if (line2) {
         ty += lh1;
-        const w2 = textWidth(line2, s2, false);
-        this.text(x + (w - w2) / 2, ty, line2, { font: 'regular', size: s2, color: color2 });
+        const w2 = textWidth(out2, s2, false);
+        this.text(x + (w - w2) / 2, ty, out2, { font: 'regular', size: s2, color: color2 });
       }
     }
   }

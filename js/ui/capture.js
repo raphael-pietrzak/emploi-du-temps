@@ -14,6 +14,25 @@
 const PAGE_W = 842, PAGE_H = 595; // A4 paysage, en points (72/pouce)
 const A3_PORTRAIT_W = 842, A3_PORTRAIT_H = 1191; // A3 portrait
 const MARGIN = 36;
+const BREAK_ROW_H = 15;
+// Il n'existe pas de notion de "pause déjeuner" dans state.config (pas de
+// champ dédié) — on la déduit d'un écart de temps notable entre la fin d'un
+// créneau et le début du suivant. 40min sépare confortablement une vraie
+// pause méridienne (ex: 12:05→13:15 par défaut, 70min) d'une simple
+// interclasse courte (ex: 10:10→10:25, 15min) sans dépendre des horaires
+// exacts d'un établissement donné.
+const BREAK_THRESHOLD_MIN = 40;
+function parseTimeToMin(t) {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+function computeBreaksAfter(slots) {
+  const set = new Set();
+  for (let i = 0; i < slots.length - 1; i++) {
+    if (parseTimeToMin(slots[i + 1].start) - parseTimeToMin(slots[i].end) >= BREAK_THRESHOLD_MIN) set.add(i);
+  }
+  return set;
+}
 
 Object.assign(UI, {
   bindCapture() {
@@ -49,7 +68,8 @@ Object.assign(UI, {
     const labelW = 58;
     const dayW = (w - labelW) / activeDays.length;
     const headerH = 20;
-    const maxBodyH = h - titleAreaH - headerH;
+    const breaksAfter = computeBreaksAfter(slots);
+    const maxBodyH = h - titleAreaH - headerH - breaksAfter.size * BREAK_ROW_H;
     const rowH = Math.min(42, maxBodyH / slots.length);
 
     page.rect(x, tableTop, labelW, headerH, { fill: '#e8e8e8', stroke: '#000000' });
@@ -59,8 +79,8 @@ Object.assign(UI, {
       page.centerText(cx, tableTop, dayW, headerH, days[di].toUpperCase(), { font: 'bold', size: 9 });
     });
 
+    let cy = tableTop + headerH;
     slots.forEach((sl, si) => {
-      const cy = tableTop + headerH + si * rowH;
       page.rect(x, cy, labelW, rowH, { fill: '#f5f5f5', stroke: '#000000' });
       page.centerText(x, cy, labelW, rowH, `${sl.start}-${sl.end}`, { size: 7.5, color: '#333333' });
 
@@ -83,6 +103,14 @@ Object.assign(UI, {
           page.rect(cx, cy, dayW, rowH, { fill: open ? '#ffffff' : '#e2e2e2', stroke: '#000000' });
         }
       });
+
+      cy += rowH;
+      if (breaksAfter.has(si)) {
+        const fullW = labelW + activeDays.length * dayW;
+        page.rect(x, cy, fullW, BREAK_ROW_H, { fill: '#eeeeee', stroke: '#000000' });
+        page.centerText(x, cy, fullW, BREAK_ROW_H, `Pause déjeuner  ·  ${sl.end}–${slots[si + 1].start}`, { font: 'bold', size: 7.5, color: '#666666' });
+        cy += BREAK_ROW_H;
+      }
     });
   },
 
