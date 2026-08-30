@@ -26,10 +26,18 @@
   <main>
     <!-- =============== CONFIG =============== -->
     <section id="tab-config" class="tab active">
-      <div class="bento">
+      <div class="config-layout">
+        <div class="card bento-volumes">
+          <h2>Volumes horaires (heures / semaine)</h2>
+          <p class="hint">
+            <kbd>Clic</kbd> = +1 h · <kbd>Shift</kbd> + <kbd>clic</kbd> = -1 h<br>
+            <kbd>Cmd</kbd> + <kbd>clic</kbd> = +1 h en semaine A · <kbd>Alt</kbd> + <kbd>clic</kbd> = +1 h en semaine B<br>
+          </p>
+          <div id="volumes-container"></div>
+        </div>
+
         <div class="card bento-grille tone-info">
           <h2>Grille horaire</h2>
-          <p class="hint">Modifie les créneaux.</p>
           <table id="slots-table">
             <thead><tr><th>Début</th><th>Fin</th><th></th></tr></thead>
             <tbody></tbody>
@@ -39,7 +47,6 @@
 
         <div class="card bento-openslots">
           <h2>Créneaux actifs</h2>
-          <p class="hint">Clic (ou glisser) pour fermer/ouvrir un créneau — pour tout le monde, toutes classes et profs confondus. Utile pour un mercredi après-midi sans cours, par exemple, sans avoir à marquer chaque prof indisponible à la main.</p>
           <div id="open-grid-wrap"></div>
         </div>
 
@@ -64,12 +71,6 @@
         <div class="card bento-options tone-neutral">
           <h2>Options</h2>
           <label><input type="checkbox" id="opt-no-gaps"> Éviter les trous dans la journée des élèves</label>
-        </div>
-
-        <div class="card bento-volumes">
-          <h2>Volumes horaires (heures / semaine)</h2>
-          <p class="hint">Combien d'heures de chaque matière pour chaque classe. <kbd>clic</kbd> = +1 · <kbd>shift</kbd>+<kbd>clic</kbd> = -1.</p>
-          <div id="volumes-container"></div>
         </div>
       </div>
     </section>
@@ -181,6 +182,7 @@
             <button id="generate-btn" class="primary">Générer l'emploi du temps</button>
             <button id="repair-btn" disabled title="Complète par recherche locale le meilleur essai obtenu (rapide, mais ne peut pas prouver qu'une configuration est impossible).">Réparer</button>
             <button id="copy-btn" title="Copie l'emploi du temps de toutes les classes au format texte (pour le partager ou déboguer).">Copier (texte)</button>
+            <button id="save-schedule-btn" disabled title="Sauvegarde une copie de l'emploi du temps actuel pour pouvoir y revenir plus tard et comparer.">Sauvegarder cette version</button>
           </div>
           <div class="view-picker">
             <label>Vue :</label>
@@ -191,6 +193,12 @@
         </div>
         <div id="solver-status" class="status"></div>
         <div id="schedule-container"></div>
+      </div>
+
+      <div class="card">
+        <h2>Versions sauvegardées</h2>
+        <p class="hint">Garde plusieurs emplois du temps générés de côté pour comparer, sans perdre celui en cours. 15 versions max — supprime les anciennes si besoin.</p>
+        <ul id="saved-schedules-list" class="pins-list"></ul>
       </div>
     </section>
   </main>

@@ -1,7 +1,10 @@
 // schedule.js — onglet Emploi du temps : génération, réparation, sélection de vue et rendus (classe / prof / global).
 
+const MAX_SAVED_SCHEDULES = 15;
+
 Object.assign(UI, {
   lastPartial: null, // dernier essai partiel (Solver.solve échoué) : { schedule, placements, missing }
+  viewingSavedId: null, // id d'une version sauvegardée en cours de consultation (lecture seule), ou null = état courant
 
   bindSchedule() {
     document.getElementById('generate-btn').addEventListener('click', () => {
@@ -27,7 +30,9 @@ Object.assign(UI, {
           status.textContent = res.message;
         }
         btn.disabled = false;
+        this.viewingSavedId = null;
         this.updateRepairButton();
+        this.updateSaveButton();
         this.renderSchedule();
       }, 10);
     });
@@ -51,7 +56,9 @@ Object.assign(UI, {
           status.className = 'status err';
           status.textContent = `${res.message} (${dt}ms)`;
         }
+        this.viewingSavedId = null;
         this.updateRepairButton();
+        this.updateSaveButton();
         this.renderSchedule();
       }, 10);
     });
@@ -75,7 +82,95 @@ Object.assign(UI, {
       });
     });
 
+    document.getElementById('save-schedule-btn').addEventListener('click', () => {
+      if (!this.state.schedule) return;
+      if (this.state.savedSchedules.length >= MAX_SAVED_SCHEDULES) {
+        alert(`Limite de ${MAX_SAVED_SCHEDULES} versions atteinte — supprime-en une avant d'en sauvegarder une nouvelle.`);
+        return;
+      }
+      const defaultName = new Date().toLocaleString('fr', { dateStyle: 'short', timeStyle: 'short' });
+      const name = prompt('Nom de cette version :', defaultName);
+      if (name === null) return; // annulé
+      this.state.savedSchedules.push({
+        id: 'saved_' + Date.now(),
+        name: name.trim() || defaultName,
+        date: new Date().toISOString(),
+        schedule: this.state.schedule,
+        message: document.getElementById('solver-status').textContent,
+      });
+      this.onChange();
+      this.renderSavedSchedules();
+    });
+
     this.updateRepairButton();
+    this.updateSaveButton();
+    this.renderSavedSchedules();
+  },
+
+  updateSaveButton() {
+    const btn = document.getElementById('save-schedule-btn');
+    if (!btn) return;
+    btn.disabled = !this.state.schedule;
+  },
+
+  renderSavedSchedules() {
+    const list = document.getElementById('saved-schedules-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (this.state.savedSchedules.length === 0) {
+      list.innerHTML = '<li class="hint">Aucune version sauvegardée pour l\'instant.</li>';
+      return;
+    }
+    // Plus récentes en premier.
+    this.state.savedSchedules.slice().reverse().forEach(saved => {
+      const li = document.createElement('li');
+      const dateTxt = new Date(saved.date).toLocaleString('fr', { dateStyle: 'short', timeStyle: 'short' });
+      const activeTxt = this.viewingSavedId === saved.id ? ' (en cours de consultation)' : '';
+      li.innerHTML = `<span><strong>${saved.name}</strong> — ${dateTxt}${activeTxt}</span>`;
+      const actions = document.createElement('span');
+      actions.className = 'saved-actions';
+
+      const viewBtn = document.createElement('button');
+      viewBtn.textContent = this.viewingSavedId === saved.id ? 'Revenir à l\'actuel' : 'Voir';
+      viewBtn.addEventListener('click', () => {
+        this.viewingSavedId = this.viewingSavedId === saved.id ? null : saved.id;
+        this.renderSchedule();
+        this.renderSavedSchedules();
+      });
+      actions.appendChild(viewBtn);
+
+      const restoreBtn = document.createElement('button');
+      restoreBtn.textContent = 'Restaurer';
+      restoreBtn.title = 'Remplace l\'emploi du temps actuel par cette version';
+      restoreBtn.addEventListener('click', () => {
+        if (!confirm(`Remplacer l'emploi du temps actuel par "${saved.name}" ?`)) return;
+        this.state.schedule = saved.schedule;
+        this.lastPartial = null;
+        this.viewingSavedId = null;
+        this.onChange();
+        this.updateRepairButton();
+        this.updateSaveButton();
+        this.renderSchedule();
+        this.renderSavedSchedules();
+      });
+      actions.appendChild(restoreBtn);
+
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×';
+      delBtn.title = 'Supprimer cette version';
+      delBtn.addEventListener('click', () => {
+        if (!confirm(`Supprimer la version "${saved.name}" ?`)) return;
+        this.state.savedSchedules = this.state.savedSchedules.filter(s => s.id !== saved.id);
+        if (this.viewingSavedId === saved.id) this.viewingSavedId = null;
+        this.onChange();
+        this.renderSchedule();
+        this.renderSavedSchedules();
+      });
+      actions.appendChild(delBtn);
+
+      li.appendChild(actions);
+      list.appendChild(li);
+    });
   },
 
   // Rendu texte brut de toutes les classes (+ réunions sans classe) d'un coup —
@@ -89,11 +184,14 @@ Object.assign(UI, {
 
     const { days, slots } = this.state.config;
     const activeDays = this.activeDayIndices();
+    const nameOf = pid => this.state.profs.find(p => p.id === pid)?.name || pid;
     const cellLabel = (cell) => {
       if (!cell) return '(libre)';
-      const names = (cell.profIds || [cell.profId])
-        .map(pid => this.state.profs.find(p => p.id === pid)?.name || pid)
-        .join(', ');
+      if (cell.weekA || cell.weekB) {
+        const partFor = wc => wc ? `${wc.subj} — ${(wc.profIds || [wc.profId]).map(nameOf).join(', ') || '—'}` : '(libre)';
+        return `[semaine A] ${partFor(cell.weekA)}  ·  [semaine B] ${partFor(cell.weekB)}`;
+      }
+      const names = (cell.profIds || [cell.profId]).map(nameOf).join(', ');
       return `${cell.subj} — ${names || '—'}`;
     };
 
@@ -140,6 +238,31 @@ Object.assign(UI, {
     const cont = document.getElementById('schedule-container');
     cont.innerHTML = '';
     const view = sel.value;
+
+    // Consultation d'une version sauvegardée : prioritaire sur tout le reste,
+    // toujours en lecture seule (le swap suppose qu'on édite state.schedule,
+    // pas un instantané figé) — l'utilisateur doit explicitement "Restaurer"
+    // pour la rendre éditable.
+    if (this.viewingSavedId) {
+      const saved = this.state.savedSchedules.find(s => s.id === this.viewingSavedId);
+      if (saved) {
+        const banner = document.createElement('p');
+        banner.className = 'hint partial-banner';
+        banner.textContent = `Consultation de "${saved.name}" (lecture seule) — ceci n'est pas l'emploi du temps actuel.`;
+        cont.appendChild(banner);
+        const schedule = saved.schedule;
+        if (view.startsWith('prof:')) {
+          cont.appendChild(this.buildProfGrid(view.slice(5), schedule));
+        } else if (view.startsWith('class:')) {
+          cont.appendChild(this.buildClassBlock(view.slice(6), schedule, true));
+        } else {
+          this.state.config.classes.forEach(cls => cont.appendChild(this.buildClassBlock(cls, schedule, true)));
+          this.meetingsWithoutClass().forEach(m => cont.appendChild(this.buildMeetingBlock(m, schedule)));
+        }
+        return;
+      }
+      this.viewingSavedId = null; // référence caduque (version supprimée) : on retombe sur l'état courant
+    }
 
     if (this.state.schedule) {
       if (view.startsWith('prof:')) {
@@ -190,17 +313,26 @@ Object.assign(UI, {
     const h = document.createElement('h3');
     h.textContent = 'Réunion — ' + meeting.name;
     wrap.appendChild(h);
-    const grid = this.buildScheduleGrid((d, s) => {
-      const cell = schedule[`${pseudoKey}|${d}|${s}`];
-      if (!cell) return null;
-      const names = (cell.profIds || [cell.profId])
-        .map(pid => this.state.profs.find(p => p.id === pid)?.name || pid)
-        .join(', ');
-      return { top: meeting.name, bottom: names, pinned: false };
-    });
+    const grid = this.buildScheduleGrid((d, s) => this.cellDescriptor(schedule[`${pseudoKey}|${d}|${s}`]));
     // Lecture seule : le swap ne sait pas gérer les cellules multi-profs sans classe.
     wrap.appendChild(grid);
     return wrap;
+  },
+
+  // Traduit une cellule brute de `schedule` (format plat {subj,profId,profIds,
+  // pinned} pour une session "toutes les semaines", ou {weekA?, weekB?} pour
+  // une cellule qui alterne — voir buildContext/solve() dans solver.js) en
+  // descripteur d'affichage consommé par buildScheduleGrid : soit {top,bottom,
+  // pinned} (une seule boîte), soit {alt:true, weekA, weekB} (deux boîtes).
+  cellDescriptor(cell) {
+    if (!cell) return null;
+    const nameOf = pid => this.state.profs.find(p => p.id === pid)?.name || pid;
+    if (cell.weekA || cell.weekB) {
+      const boxFor = wc => wc ? { top: wc.subj, bottom: (wc.profIds || [wc.profId]).map(nameOf).join(', ') || '—' } : null;
+      return { alt: true, weekA: boxFor(cell.weekA), weekB: boxFor(cell.weekB) };
+    }
+    const names = (cell.profIds || [cell.profId]).map(nameOf).join(', ');
+    return { top: cell.subj, bottom: names || '—', pinned: !!cell.pinned };
   },
 
   buildClassBlock(cls, schedule = this.state.schedule, readOnly = false) {
@@ -209,22 +341,17 @@ Object.assign(UI, {
     const h = document.createElement('h3');
     h.textContent = 'Classe ' + cls;
     wrap.appendChild(h);
-    const grid = this.buildScheduleGrid((d, s) => {
-      const cell = schedule[`${cls}|${d}|${s}`];
-      if (!cell) return null;
-      const profIds = cell.profIds || [cell.profId];
-      const names = profIds.map(pid => this.state.profs.find(p => p.id === pid)?.name || pid).join(', ');
-      return { top: cell.subj, bottom: names || '—', pinned: !!cell.pinned };
-    });
+    const grid = this.buildScheduleGrid((d, s) => this.cellDescriptor(schedule[`${cls}|${d}|${s}`]));
     // Marque chaque cellule avec sa classe : le swap peut être cross-classe.
     grid.querySelectorAll('.cell-sched').forEach(td => {
       td.dataset.cls = cls;
       const key = `${cls}|${td.dataset.d}|${td.dataset.s}`;
       const cell = schedule[key];
       if (cell?.pinned) td.classList.add('pinned');
-      // Épingle, lecture seule, ou cellule multi-profs (réunion/cours co-enseigné) :
-      // le swap suppose un seul prof par cellule, donc pas de swap ici.
-      if (readOnly || cell?.pinned || cell?.meeting) return;
+      // Épingle, lecture seule, cellule multi-profs (réunion/cours co-enseigné),
+      // ou cellule alternant semaine A/B : le swap suppose un seul prof et une
+      // seule matière par cellule, donc pas de swap sur ces cas-là.
+      if (readOnly || cell?.pinned || cell?.meeting || cell?.weekA || cell?.weekB) return;
       td.classList.add('swappable');
       td.addEventListener('click', () => this.handleSwapClick(td));
     });
@@ -243,19 +370,35 @@ Object.assign(UI, {
     // buildContext dans solver.js) : il faut aussi la scanner ici pour que ce
     // prof la voie apparaître dans SON emploi du temps.
     const meetingKeys = this.meetingsWithoutClass().map(m => `@meeting:${m.id}`);
+    const nameOfCls = cls => cls.startsWith('@meeting:') ? 'réunion' : cls;
     wrap.appendChild(this.buildScheduleGrid((d, s) => {
       // Un prof peut apparaître sur plusieurs classes (épingle/groupe multi-classes)
-      // et/ou via une réunion à plusieurs profs obligatoires (cell.profIds).
-      const found = [];
+      // et/ou via une réunion à plusieurs profs obligatoires (cell.profIds), et/ou
+      // dans une SEULE des deux semaines d'une cellule alternante (cell.weekA/weekB)
+      // — les trois cas doivent être distingués pour que sa vue perso alterne
+      // correctement elle aussi, pas seulement la vue par classe.
+      const found = []; // sessions "both" (multi-classes possible)
+      let weekABox = null, weekBBox = null;
       for (const cls of this.state.config.classes.concat(meetingKeys)) {
         const cell = schedule[`${cls}|${d}|${s}`];
-        if (cell && (cell.profIds || [cell.profId]).includes(profId)) found.push({ cls, cell });
+        if (!cell) continue;
+        if (cell.weekA || cell.weekB) {
+          if (cell.weekA && (cell.weekA.profIds || [cell.weekA.profId]).includes(profId)) {
+            weekABox = { top: cell.weekA.subj, bottom: nameOfCls(cls) };
+          }
+          if (cell.weekB && (cell.weekB.profIds || [cell.weekB.profId]).includes(profId)) {
+            weekBBox = { top: cell.weekB.subj, bottom: nameOfCls(cls) };
+          }
+        } else if ((cell.profIds || [cell.profId]).includes(profId)) {
+          found.push({ cls, cell });
+        }
       }
+      if (weekABox || weekBBox) return { alt: true, weekA: weekABox, weekB: weekBBox };
       if (found.length === 0) return null;
       const pinned = found.some(f => f.cell.pinned);
       return {
         top: found[0].cell.subj,
-        bottom: found.map(f => f.cls.startsWith('@meeting:') ? 'réunion' : f.cls).join(', '),
+        bottom: found.map(f => nameOfCls(f.cls)).join(', '),
         pinned,
       };
     }));
@@ -271,16 +414,21 @@ Object.assign(UI, {
       if (activeDays.has(i)) html += `<th>${d}</th>`;
     });
     html += '</tr></thead><tbody>';
+    const openSlots = this.state.config.openSlots || [];
     this.state.config.slots.forEach((sl, si) => {
       html += `<tr><td class="slot-label">${sl.start}–${sl.end}</td>`;
       this.state.config.days.forEach((_, di) => {
         if (!activeDays.has(di)) return;
+        const open = (openSlots[di] || [])[si] !== false;
         const c = cellFor(di, si);
-        if (c) {
+        if (c?.alt) {
+          const box = (wc, label) => `<div class="week-box${wc ? '' : ' week-empty'}"><span class="week-tag">${label}</span>${wc ? `<div class="subject">${wc.top}</div><div class="prof">${wc.bottom}</div>` : ''}</div>`;
+          html += `<td class="cell-sched filled alt-week" data-d="${di}" data-s="${si}"><div class="alt-week-row">${box(c.weekA, 'A')}${box(c.weekB, 'B')}</div></td>`;
+        } else if (c) {
           const pinCls = c.pinned ? ' pinned' : '';
           html += `<td class="cell-sched filled${pinCls}" data-d="${di}" data-s="${si}"><div class="subject">${c.top}</div><div class="prof">${c.bottom}</div></td>`;
         } else {
-          html += `<td class="cell-sched" data-d="${di}" data-s="${si}"></td>`;
+          html += `<td class="cell-sched${open ? '' : ' closed'}" data-d="${di}" data-s="${si}"></td>`;
         }
       });
       html += '</tr>';

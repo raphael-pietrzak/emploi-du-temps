@@ -191,38 +191,37 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-/* ================= Bento layout — onglet Config ================= */
-.bento {
+/* ================= Config layout : une seule grille à 3 colonnes / 4 lignes =================
+   1 2 3
+   1 2 4
+   1 5 5
+   1 6 6
+   1=Volumes (pleine hauteur) 2=Grille horaire (2 lignes) 3=Créneaux actifs
+   4=Classes (sous Créneaux actifs) 5=Matières (col2+3) 6=Options (col2+3) */
+.config-layout {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: minmax(320px, auto) auto 1fr;
   grid-auto-rows: minmax(0, auto);
   gap: 14px;
 }
-.bento > .card { margin-bottom: 0; position: relative; overflow: hidden; }
+.config-layout > .card { margin-bottom: 0; position: relative; overflow: hidden; }
 
-/* Zones du puzzle */
-.bento-grille    { grid-column: span 2; grid-row: span 2; }
-.bento-openslots { grid-column: span 4; }
-.bento-classes   { grid-column: span 3; }
-.bento-matieres  { grid-column: span 3; }
-.bento-options   { grid-column: 1 / -1; }
-.bento-volumes   { grid-column: 1 / -1; }
+.bento-volumes   { grid-column: 1; grid-row: 1 / 5; }
+#volumes-container { overflow-x: auto; }
+.bento-grille    { grid-column: 2; grid-row: 1 / 3; width: fit-content; }
+.bento-grille table { width: auto; }
+.bento-openslots { grid-column: 3; grid-row: 1; }
+#open-grid-wrap { overflow-x: auto; }
+.bento-classes   { grid-column: 3; grid-row: 2; }
+.bento-matieres  { grid-column: 2 / 4; grid-row: 3; }
+.bento-options   { grid-column: 2 / 4; grid-row: 4; }
 
-
-/* Sur les écrans étroits, on repasse en 2 colonnes puis 1 */
+/* Sur les écrans étroits, tout repasse en une seule colonne, empilé dans l'ordre */
 @media (max-width: 1100px) {
-  .bento { grid-template-columns: repeat(4, 1fr); }
-  .bento-grille    { grid-column: span 4; grid-row: auto; }
-  .bento-openslots { grid-column: span 4; }
-  .bento-classes  { grid-column: span 2; }
-  .bento-matieres { grid-column: span 2; }
-  .bento-options  { grid-column: span 4; }
+  .config-layout { grid-template-columns: 1fr; }
+  .config-layout > .card { grid-column: 1 !important; grid-row: auto !important; }
+  .bento-grille { width: 100%; }
 }
-@media (max-width: 700px) {
-  .bento { grid-template-columns: 1fr; }
-  .bento > .card { grid-column: 1 / -1 !important; }
-}
-
 /* ================= Inputs ================= */
 input[type="text"], input[type="number"], input[type="time"], input:not([type]), select, textarea {
   appearance: auto;
@@ -448,6 +447,17 @@ table th { color: var(--color-text-secondary); font-weight: 500; }
   background-color: var(--color-background-tertiary);
   border-color: var(--input-border);
 }
+/* Heures spécifiques semaine A/B, discrètes (petit indice à côté du nombre commun) */
+.vol-extra {
+  margin-left: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  letter-spacing: -0.02em;
+}
+.vol-cell:hover .vol-extra {
+  color: var(--color-text-primary);
+}
 /* Volume > 0 mais aucun prof éligible → alerte visuelle */
 .vol-cell.no-prof {
   border-color: var(--color-border-danger);
@@ -533,18 +543,18 @@ input[type="checkbox"] {
   min-width: 90px;
   border-radius: var(--border-radius-sm);
 }
-/* Variante compacte : pour la grille "créneaux actifs", utilisée rarement,
-   pas besoin qu'elle soit aussi grande que les grilles de dispo/emploi du temps. */
-.grid-table.compact { width: auto; border-spacing: 2px; }
-.grid-table.compact th, .grid-table.compact td {
-  height: 22px;
-  min-width: 34px;
-  font-size: 10px;
+/* Créneaux actifs : juste ouvert/fermé par cellule, pas besoin des mêmes
+   dimensions que les grilles de dispo/emploi du temps (texte + prof) — des
+   cellules plus petites lui évitent de déborder de sa carte (elle partage sa
+   ligne avec Grille horaire, donc moins de largeur disponible). */
+.grid-table.open-slots-table th,
+.grid-table.open-slots-table td {
+  height: 26px;
+  min-width: 0;
 }
-.grid-table.compact td.slot-label {
-  min-width: 64px;
-  font-size: 10px;
-  padding: 2px 6px;
+.grid-table.open-slots-table td.slot-label {
+  min-width: 70px;
+  font-size: 11px;
 }
 .grid-table th {
   background: var(--color-background-secondary);
@@ -597,6 +607,10 @@ input[type="checkbox"] {
   background: var(--color-background-info);
   border-color: var(--color-border-info);
 }
+.cell-sched.closed {
+  background: repeating-linear-gradient(45deg, var(--color-background-tertiary), var(--color-background-tertiary) 4px, var(--color-background-secondary) 4px, var(--color-background-secondary) 8px);
+  border-color: var(--color-border-tertiary);
+}
 .cell-sched .subject { font-weight: 600; color: var(--color-text-primary); }
 .cell-sched .prof { color: var(--color-text-info); font-size: 10px; margin-top: 2px; }
 .cell-sched.swappable { cursor: pointer; }
@@ -609,6 +623,53 @@ input[type="checkbox"] {
   border-color: var(--color-border-success, #10b981) !important;
   box-shadow: inset 0 0 0 1px var(--color-border-success, #10b981);
 }
+
+/* Cellule semaine A/B : deux moitiés côte à côte au lieu d'une seule boîte —
+   discret, juste assez pour repérer d'un coup d'œil qu'un créneau alterne.
+   Les deux moitiés se touchent (pas de gap/padding sur le conteneur) pour
+   remplir la cellule exactement comme une cellule normale ; un simple trait
+   de séparation (border-left sur la 2e moitié) sépare A de B sans donner
+   l'impression de deux chips flottant dans une bordure noire. */
+.cell-sched.filled.alt-week {
+  padding: 0 !important;
+}
+.alt-week-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: var(--border-radius-sm);
+}
+.week-box {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2px 3px 2px 14px;
+  background: var(--color-background-info);
+  box-sizing: border-box;
+}
+.week-box + .week-box {
+  border-left: 1px solid var(--color-border-primary);
+}
+.week-box.week-empty {
+  background: var(--color-background-secondary);
+}
+.week-tag {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  line-height: 1;
+}
+.week-box .subject { font-size: 10px; }
+.week-box .prof { font-size: 9px; margin-top: 1px; }
 
 /* ================= Schedule view ================= */
 .schedule-header {
@@ -686,6 +747,25 @@ input[type="checkbox"] {
   color: var(--color-text-muted); font-size: 14px; cursor: pointer;
 }
 .pins-list li button:hover { color: var(--color-text-danger); background: none; }
+
+/* Versions sauvegardées : "Voir"/"Restaurer" doivent ressembler à de vrais
+   boutons (contrairement au simple "×" de suppression des autres listes). */
+.saved-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.saved-actions button {
+  background: var(--color-background-tertiary);
+  border: 0.5px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  padding: 3px 10px;
+  color: var(--color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.saved-actions button:hover { background: var(--color-background-secondary); color: var(--color-text-primary); }
+.saved-actions button:last-child {
+  background: none; border: none; padding: 0 4px;
+  color: var(--color-text-muted); font-size: 14px;
+}
+.saved-actions button:last-child:hover { color: var(--color-text-danger); background: none; }
 
 /* Rapport de charge des profs (onglet Professeurs) */
 .load-report-card { margin-top: 16px; }

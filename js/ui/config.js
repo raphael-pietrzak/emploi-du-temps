@@ -150,7 +150,7 @@ Object.assign(UI, {
     const wrap = document.getElementById('open-grid-wrap');
     wrap.innerHTML = '';
     const t = document.createElement('table');
-    t.className = 'grid-table compact';
+    t.className = 'grid-table open-slots-table';
     let html = '<thead><tr><th>Créneau</th>';
     days.forEach(d => html += `<th>${d}</th>`);
     html += '</tr></thead><tbody>';
@@ -210,11 +210,15 @@ Object.assign(UI, {
   renderVolumes() {
     const c = document.getElementById('volumes-container');
     c.innerHTML = '';
-    const { classes, subjects } = this.state.config;
+    const { classes } = this.state.config;
+    const subjects = this.state.config.subjects; // ordre réel, pour la longueur/ajout
     if (!classes.length || !subjects.length) {
       c.innerHTML = '<p class="hint">Ajoute des classes et matières d\'abord.</p>';
       return;
     }
+    // Tri alphabétique à l'affichage seulement (lisibilité) — ne modifie pas
+    // this.state.config.subjects, dont l'ordre reste celui d'ajout ailleurs.
+    const subjectsSorted = subjects.slice().sort((a, b) => a.localeCompare(b, 'fr'));
     // "Un prof enseigne-t-il (subj, cls) ?" — même logique que le solveur.
     const hasProf = (subj, cls) => this.state.profs.some(p => {
       if (p.subjectClasses) return (p.subjectClasses[subj] || []).includes(cls);
@@ -228,20 +232,26 @@ Object.assign(UI, {
     classes.forEach(cl => html += `<th>${cl}</th>`);
     html += '<th class="total-col">Total</th><th></th></tr></thead><tbody>';
     const colTotals = classes.map(() => 0);
-    subjects.forEach(sj => {
+    subjectsSorted.forEach(sj => {
       html += `<tr><td class="subj-col">${sj}</td>`;
       let rowTotal = 0;
       classes.forEach((cl, i) => {
         const key = `${cl}|${sj}`;
         const v = this.state.volumes[key] || 0;
-        rowTotal += v;
-        colTotals[i] += v;
-        const zeroCls = v === 0 ? ' is-zero' : '';
+        const va = this.state.volumesA[key] || 0;
+        const vb = this.state.volumesB[key] || 0;
+        rowTotal += v + (va + vb) / 2;
+        colTotals[i] += v + (va + vb) / 2;
+        const zeroCls = (v === 0 && !va && !vb) ? ' is-zero' : '';
         const noProfCls = (v > 0 && !hasProf(sj, cl)) ? ' no-prof' : '';
         const title = (v > 0 && !hasProf(sj, cl))
           ? `Aucun prof n'enseigne ${sj} en ${cl}.`
-          : 'clic : +1 · shift+clic : -1';
-        html += `<td><span class="vol-cell${zeroCls}${noProfCls}" data-key="${key}" title="${title}">${v}</span></td>`;
+          : 'Clic : +1 (toutes les semaines) · Maj+clic : −1\nCmd+clic : +1 semaine A · Cmd+Maj+clic : −1 semaine A\nAlt+clic : +1 semaine B · Alt+Maj+clic : −1 semaine B';
+        const extraParts = [];
+        if (va) extraParts.push(`A+${va}`);
+        if (vb) extraParts.push(`B+${vb}`);
+        const extra = extraParts.length ? `<sub class="vol-extra">${extraParts.join(' ')}</sub>` : '';
+        html += `<td><span class="vol-cell${zeroCls}${noProfCls}" data-key="${key}" title="${title}">${v || (extra ? '' : '0')}${extra}</span></td>`;
       });
       html += `<td class="total-cell">${rowTotal || '·'}</td>`;
       html += `<td class="row-action"><button class="copy-row" data-subj="${sj}" title="Copier la 1ʳᵉ valeur non-nulle sur toutes les classes">⇢</button></td>`;
@@ -257,13 +267,14 @@ Object.assign(UI, {
     c.appendChild(t);
 
     const cells = Array.from(t.querySelectorAll('.vol-cell'));
+    const weekAvg = key => (this.state.volumes[key] || 0) + ((this.state.volumesA[key] || 0) + (this.state.volumesB[key] || 0)) / 2;
     const recomputeTotals = () => {
       const colT = classes.map(() => 0);
       const rows = t.querySelectorAll('tbody tr:not(.totals-row)');
       rows.forEach(tr => {
         let rowT = 0;
         tr.querySelectorAll('.vol-cell').forEach((el, i) => {
-          const v = this.state.volumes[el.dataset.key] || 0;
+          const v = weekAvg(el.dataset.key);
           rowT += v;
           colT[i] += v;
         });
@@ -275,23 +286,39 @@ Object.assign(UI, {
       totCells[totCells.length - 1].textContent = colT.reduce((a, b) => a + b, 0);
     };
 
-    const setValue = (el, v) => {
+    // `kind` : 'common' (clic), 'A' (ctrl+clic) ou 'B' (alt+clic) — édite la
+    // carte correspondante (volumes / volumesA / volumesB) sans jamais avoir
+    // à ressaisir les heures communes : elles restent inchangées, seule
+    // l'heure spécifique à la semaine visée bouge.
+    const mapFor = kind => kind === 'A' ? this.state.volumesA : kind === 'B' ? this.state.volumesB : this.state.volumes;
+    const setValue = (el, kind, v) => {
       v = Math.max(0, v);
-      const [cl, sj] = el.dataset.key.split('|');
-      this.state.volumes[el.dataset.key] = v;
-      el.textContent = v;
-      el.classList.toggle('is-zero', v === 0);
-      const bad = v > 0 && !hasProf(sj, cl);
+      const key = el.dataset.key;
+      const [cl, sj] = key.split('|');
+      mapFor(kind)[key] = v;
+      if (v === 0) delete mapFor(kind)[key];
+      const vCommon = this.state.volumes[key] || 0;
+      const va = this.state.volumesA[key] || 0;
+      const vb = this.state.volumesB[key] || 0;
+      const extraParts = [];
+      if (va) extraParts.push(`A+${va}`);
+      if (vb) extraParts.push(`B+${vb}`);
+      el.innerHTML = `${vCommon || (extraParts.length ? '' : '0')}${extraParts.length ? `<sub class="vol-extra">${extraParts.join(' ')}</sub>` : ''}`;
+      el.classList.toggle('is-zero', vCommon === 0 && !va && !vb);
+      const bad = vCommon > 0 && !hasProf(sj, cl);
       el.classList.toggle('no-prof', bad);
-      el.title = bad ? `Aucun prof n'enseigne ${sj} en ${cl}.` : 'Clic : +1 · Maj+clic : −1';
+      el.title = bad
+        ? `Aucun prof n'enseigne ${sj} en ${cl}.`
+        : 'Clic : +1 (toutes les semaines) · Maj+clic : −1\nCmd+clic : +1 semaine A · Cmd+Maj+clic : −1 semaine A\nAlt+clic : +1 semaine B · Alt+Maj+clic : −1 semaine B';
       recomputeTotals();
       this.onChange();
     };
 
     cells.forEach(el => {
       el.addEventListener('click', e => {
-        const cur = this.state.volumes[el.dataset.key] || 0;
-        setValue(el, cur + (e.shiftKey ? -1 : 1));
+        const kind = e.metaKey ? 'A' : e.altKey ? 'B' : 'common';
+        const cur = mapFor(kind)[el.dataset.key] || 0;
+        setValue(el, kind, cur + (e.shiftKey ? -1 : 1));
       });
     });
 
@@ -303,7 +330,7 @@ Object.assign(UI, {
         const src = rowCells.find(x => (this.state.volumes[x.dataset.key] || 0) > 0);
         if (!src) { alert('Renseigne une valeur > 0 dans la ligne d\'abord.'); return; }
         const val = this.state.volumes[src.dataset.key] || 0;
-        rowCells.forEach(x => setValue(x, val));
+        rowCells.forEach(x => setValue(x, 'common', val));
       });
     });
   },

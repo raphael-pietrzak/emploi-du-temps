@@ -36,6 +36,13 @@
 // dans ce fichier (voir CLAUDE.md).
 function buildContext(state) {
   const { config, profs, volumes, options } = state;
+  // Heures "semaine A" / "semaine B" : EN PLUS des heures communes (volumes),
+  // pas à la place — une matière à "1h commun + 1h semaine A" a 1h toutes les
+  // semaines ET 1h de plus les semaines A. N'interagissent PAS avec les
+  // épingles/regroupements/réunions (hors périmètre v1, voir CLAUDE.md) : ce
+  // sont des sessions "normales" indépendantes, juste taguées par semaine.
+  const volumesA = state.volumesA || {};
+  const volumesB = state.volumesB || {};
   const constraints = state.constraints || { pins: [] };
   const profsById = {};
   for (const p of profs) profsById[p.id] = p;
@@ -305,7 +312,19 @@ function buildContext(state) {
         if (h > 0) demand.push({ cls, subj, hours: h });
       }
     }
-    if (demand.length === 0 && Object.keys(pinnedSchedule).length === 0 && groups.length === 0 && meetings.length === 0) {
+    // Demande "semaine A" / "semaine B" — indépendante de demandMap (pas de
+    // décrément croisé avec épingles/groupes/réunions, hors périmètre).
+    const demandA = [];
+    const demandB = [];
+    for (const cls of config.classes) {
+      for (const subj of config.subjects) {
+        const hA = volumesA[`${cls}|${subj}`] || 0;
+        if (hA > 0) demandA.push({ cls, subj, hours: hA });
+        const hB = volumesB[`${cls}|${subj}`] || 0;
+        if (hB > 0) demandB.push({ cls, subj, hours: hB });
+      }
+    }
+    if (demand.length === 0 && demandA.length === 0 && demandB.length === 0 && Object.keys(pinnedSchedule).length === 0 && groups.length === 0 && meetings.length === 0) {
       return { ok: false, message: 'Aucun volume horaire renseigné. Va dans Configuration → Volumes horaires.' };
     }
 
@@ -350,12 +369,12 @@ function buildContext(state) {
       const elig = eligibleFor(d.subj, d.cls);
       const pairKey = `${d.cls}|${d.subj}`;
       const spreadKey = spreadPairs.has(pairKey) ? pairKey : null;
-      for (let i = 0; i < d.hours; i++) sessions.push({ classes: [d.cls], subj: d.subj, elig, spreadKey });
+      for (let i = 0; i < d.hours; i++) sessions.push({ classes: [d.cls], subj: d.subj, elig, spreadKey, week: 'both' });
     }
     for (const g of groups) {
       // Une règle de répartition ne s'applique qu'à une classe seule (elle
       // porte sur SA propre semaine) — pas de sens pour un groupe multi-classes.
-      for (let i = 0; i < g.hours; i++) sessions.push({ classes: g.classes, subj: g.subj, elig: g.elig, spreadKey: null });
+      for (let i = 0; i < g.hours; i++) sessions.push({ classes: g.classes, subj: g.subj, elig: g.elig, spreadKey: null, week: 'both' });
     }
     for (const m of meetings) {
       const elig = m.profIds.map(pid => profsById[pid]);
@@ -363,9 +382,23 @@ function buildContext(state) {
       for (let i = 0; i < m.hours; i++) {
         sessions.push({
           classes: classesForSession, subj: m.subj || m.name, elig, allRequired: true,
-          spreadKey: null, meetingId: m.id, meetingName: m.name,
+          spreadKey: null, meetingId: m.id, meetingName: m.name, week: 'both',
         });
       }
+    }
+    // Sessions "semaine A" / "semaine B" : une session normale (1 classe, un
+    // prof choisi parmi les éligibles), taguée `week` — n'occupe QUE la grille
+    // d'occupation de sa propre semaine (voir solve()/repair() plus bas), donc
+    // peut partager le même (jour, créneau, classe) qu'une session de l'AUTRE
+    // semaine sans jamais être considérée en conflit avec elle. Pas de
+    // `spreadKey` : la règle de répartition ne s'applique pas ici (hors périmètre).
+    for (const d of demandA) {
+      const elig = eligibleFor(d.subj, d.cls);
+      for (let i = 0; i < d.hours; i++) sessions.push({ classes: [d.cls], subj: d.subj, elig, spreadKey: null, week: 'A' });
+    }
+    for (const d of demandB) {
+      const elig = eligibleFor(d.subj, d.cls);
+      for (let i = 0; i < d.hours; i++) sessions.push({ classes: [d.cls], subj: d.subj, elig, spreadKey: null, week: 'B' });
     }
 
     // Union de toutes les "classes" apparaissant dans les sessions — inclut
@@ -376,7 +409,7 @@ function buildContext(state) {
 
     return {
       ok: true, config, profs, options, dayIdxs, slotCount, totalSlotsPerClass, openDayCount, isOpen,
-      demand, groups, meetings, sessions, allSessionClasses, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
+      demand, demandA, demandB, groups, meetings, sessions, allSessionClasses, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
       pinnedSlotsByClass, groupSlotsByClass, meetingSlotsByClass, spreadPairs, teachesPair, eligibleFor, availCountFor,
       profsById,
     };
@@ -388,7 +421,7 @@ const Solver = {
     if (!ctx.ok) return ctx;
     const {
       config, profs, options, dayIdxs, slotCount, totalSlotsPerClass, openDayCount, isOpen,
-      demand, groups, meetings, sessions, allSessionClasses, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
+      demand, demandA, demandB, groups, meetings, sessions, allSessionClasses, pinnedSchedule, pinnedBusyClass, pinnedBusyProf,
       pinnedSlotsByClass, groupSlotsByClass, meetingSlotsByClass, spreadPairs, eligibleFor, availCountFor,
     } = ctx;
 
@@ -430,6 +463,33 @@ const Solver = {
         flaggedBySubject.add(d.subj);
       }
     }
+
+    // Check 1-A/B et Check 2-A/B : mêmes vérifications que Check 1/2, mais
+    // pour les heures "semaine A"/"semaine B" — indépendantes de `demand`,
+    // donc signalées séparément avec un libellé explicite sur la semaine
+    // concernée pour ne pas laisser croire que c'est la charge normale qui pose problème.
+    const checkWeekDemand = (weekDemand, weekLabel) => {
+      for (const d of weekDemand) {
+        const elig = eligibleFor(d.subj, d.cls);
+        if (elig.length === 0) {
+          errors.push(`Aucun prof n'enseigne "${d.subj}" — mais ${d.hours}h sont demandées pour ${d.cls} (semaine ${weekLabel}). Va dans Professeurs et coche cette matière chez un prof.`);
+          continue;
+        }
+        let cap = 0;
+        for (const dayI of dayIdxs) {
+          for (let s = 0; s < slotCount; s++) {
+            if (!isOpen(dayI, s)) continue;
+            if (pinnedBusyClass[`${d.cls}|${dayI}|${s}`]) continue;
+            if (elig.some(p => p.availability?.[dayI]?.[s] && !pinnedBusyProf[`${p.id}|${dayI}|${s}`])) cap++;
+          }
+        }
+        if (cap < d.hours) {
+          errors.push(`${d.cls} · ${d.subj} (semaine ${weekLabel}) : ${d.hours}h demandées mais seulement ${cap} créneau(x) réellement libre(s) où un prof éligible est dispo. Profs concernés : ${elig.map(p => p.name).join(', ') || '—'}.`);
+        }
+      }
+    };
+    checkWeekDemand(demandA, 'A');
+    checkWeekDemand(demandB, 'B');
 
     // Check 2bis : idem que Check 2 mais pour les regroupements — le créneau
     // doit convenir à TOUTES les classes du groupe en même temps.
@@ -475,16 +535,30 @@ const Solver = {
     // VRAIMENT libres de la semaine, c'est-à-dire le total de la grille MOINS
     // les créneaux déjà pris par les épingles de cette classe.
     for (const cls of config.classes) {
-      const total = demand.filter(d => d.cls === cls).reduce((s, d) => s + d.hours, 0) + (groupSlotsByClass[cls] || 0) + (meetingSlotsByClass[cls] || 0);
+      const commonTotal = demand.filter(d => d.cls === cls).reduce((s, d) => s + d.hours, 0) + (groupSlotsByClass[cls] || 0) + (meetingSlotsByClass[cls] || 0);
       const pinnedSlots = pinnedSlotsByClass[cls] || 0;
       const freeCapacity = totalSlotsPerClass - pinnedSlots;
-      if (total > freeCapacity) {
+      if (commonTotal > freeCapacity) {
         errors.push(
-          `Classe ${cls} : ${total}h à caser mais seulement ${freeCapacity} créneau(x) libre(s) dans la semaine ` +
+          `Classe ${cls} : ${commonTotal}h à caser mais seulement ${freeCapacity} créneau(x) libre(s) dans la semaine ` +
           `(${totalSlotsPerClass} créneau(x) ouvert(s) au total sur la grille` +
           (pinnedSlots > 0 ? `, dont ${pinnedSlots} déjà occupé(s) par des épingles` : '') +
           `). Réduis les volumes, ouvre plus de créneaux, ou déplace des épingles.`
         );
+      }
+      // Check 3-A/B : chaque semaine A/B porte les heures communes EN PLUS de
+      // ses propres heures spécifiques — la grille physique (nb de créneaux)
+      // est la même chaque semaine, donc chacune doit tenir dedans séparément.
+      for (const [weekDemand, weekLabel] of [[demandA, 'A'], [demandB, 'B']]) {
+        const weekExtra = weekDemand.filter(d => d.cls === cls).reduce((s, d) => s + d.hours, 0);
+        if (weekExtra === 0) continue;
+        const weekTotal = commonTotal + weekExtra;
+        if (weekTotal > freeCapacity) {
+          errors.push(
+            `Classe ${cls}, semaine ${weekLabel} : ${commonTotal}h communes + ${weekExtra}h spécifiques à cette semaine = ${weekTotal}h à caser, mais seulement ${freeCapacity} créneau(x) libre(s) dans la grille. ` +
+            `Réduis les heures semaine ${weekLabel}, ou déplace des heures communes vers l'autre semaine.`
+          );
+        }
       }
     }
 
@@ -535,6 +609,32 @@ const Solver = {
       }
     }
 
+    // Check 4-A/B : un prof peut être tranquille sur la charge commune seule,
+    // mais dépassé une fois qu'on ajoute ses heures exclusives spécifiques à
+    // une semaine (dispo hebdomadaire identique chaque semaine, donc chaque
+    // semaine doit être vérifiée séparément contre la même dispo).
+    for (const [weekDemand, weekLabel] of [[demandA, 'A'], [demandB, 'B']]) {
+      const weekExclusiveByProf = {};
+      const weekSubjectsByProf = {};
+      for (const d of weekDemand) {
+        const elig = eligibleFor(d.subj, d.cls);
+        if (elig.length !== 1) continue;
+        const pid = elig[0].id;
+        weekExclusiveByProf[pid] = (weekExclusiveByProf[pid] || 0) + d.hours;
+        (weekSubjectsByProf[pid] = weekSubjectsByProf[pid] || new Set()).add(`${d.subj} (${d.cls}, semaine ${weekLabel})`);
+      }
+      for (const p of profs) {
+        const weekExtra = weekExclusiveByProf[p.id] || 0;
+        if (weekExtra === 0) continue;
+        const combined = (exclusiveByProf[p.id] || 0) + weekExtra;
+        const avail = availCountFor(p);
+        if (combined > avail) {
+          const subs = [...weekSubjectsByProf[p.id]].join(', ');
+          errors.push(`${p.name}, semaine ${weekLabel} : ${exclusiveByProf[p.id] || 0}h exclusives communes + ${weekExtra}h exclusives spécifiques (${subs}) = ${combined}h, mais seulement ${avail} créneau(x) de dispo.`);
+        }
+      }
+    }
+
     if (errors.length > 0) {
       return {
         ok: false,
@@ -545,33 +645,86 @@ const Solver = {
     // ---------- Préparation de la recherche ----------
     // `allSessionClasses` inclut les classes réelles ET les classes fictives
     // des réunions sans classe (voir buildContext) — busyClass doit couvrir les deux.
-    const busyClass = {};
+    // Semaine A/B : DEUX grilles d'occupation par classe/prof (au lieu d'une)
+    // — une session "both" (le cas normal : pins/groupes/réunions/demande
+    // commune) occupe les DEUX grilles à la fois ; une session "A" ou "B"
+    // n'occupe QUE la sienne, ce qui permet à une session "A" et une session
+    // "B" du même (classe, jour, créneau) de coexister sans jamais se voir
+    // comme en conflit — exactement le mécanisme qui permet à un créneau
+    // d'alterner de contenu d'une semaine sur l'autre. `freeClass`/`freeProf`
+    // et `markClass`/`markProf` sont le seul endroit qui sait traduire le tag
+    // `week` d'une session en lecture/écriture sur la ou les bonnes grilles —
+    // tout le reste du code (candidatesFor, domainSize, assign/undo) passe
+    // par ces helpers plutôt que de toucher busyClassA/B directement.
+    const busyClassA = {}, busyClassB = {};
     for (const cls of allSessionClasses) {
-      busyClass[cls] = config.days.map(() => new Array(slotCount).fill(false));
+      busyClassA[cls] = config.days.map(() => new Array(slotCount).fill(false));
+      busyClassB[cls] = config.days.map(() => new Array(slotCount).fill(false));
     }
-    const busyProf = {};
+    const busyProfA = {}, busyProfB = {};
     for (const p of profs) {
-      busyProf[p.id] = config.days.map(() => new Array(slotCount).fill(false));
+      busyProfA[p.id] = config.days.map(() => new Array(slotCount).fill(false));
+      busyProfB[p.id] = config.days.map(() => new Array(slotCount).fill(false));
     }
+    const freeClass = (cls, d, s, week) => {
+      if (week === 'A') return !busyClassA[cls][d][s];
+      if (week === 'B') return !busyClassB[cls][d][s];
+      return !busyClassA[cls][d][s] && !busyClassB[cls][d][s];
+    };
+    const freeProf = (pid, d, s, week) => {
+      if (week === 'A') return !busyProfA[pid][d][s];
+      if (week === 'B') return !busyProfB[pid][d][s];
+      return !busyProfA[pid][d][s] && !busyProfB[pid][d][s];
+    };
+    const markClass = (cls, d, s, week, val) => {
+      if (week !== 'B') busyClassA[cls][d][s] = val;
+      if (week !== 'A') busyClassB[cls][d][s] = val;
+    };
+    const markProf = (pid, d, s, week, val) => {
+      if (week !== 'B') busyProfA[pid][d][s] = val;
+      if (week !== 'A') busyProfB[pid][d][s] = val;
+    };
+    // Écriture/effacement d'une cellule de schedule, semaine-consciente : une
+    // session "both" garde le format PLAT historique ({subj, profId, ...}) —
+    // rétro-compatible avec tout le reste du code (rendu, swap, export). Une
+    // session "A"/"B" ne peut JAMAIS partager une cellule avec une session
+    // "both" (le busy-tracking ci-dessus l'empêche), donc {weekA, weekB} est
+    // un format sans ambiguïté : sa seule présence signale "cette cellule
+    // alterne selon la semaine" au reste de l'appli (rendu, texte copié...).
+    const writeCell = (cls, d, s, week, cellData) => {
+      const key = `${cls}|${d}|${s}`;
+      if (week === 'both') { schedule[key] = cellData; return; }
+      const existing = schedule[key] || {};
+      existing[week === 'A' ? 'weekA' : 'weekB'] = cellData;
+      schedule[key] = existing;
+    };
+    const clearCell = (cls, d, s, week) => {
+      const key = `${cls}|${d}|${s}`;
+      if (week === 'both') { delete schedule[key]; return; }
+      const existing = schedule[key];
+      if (!existing) return;
+      delete existing[week === 'A' ? 'weekA' : 'weekB'];
+      if (!existing.weekA && !existing.weekB) delete schedule[key];
+    };
 
     const schedule = {};
     for (const k of Object.keys(pinnedSchedule)) {
       schedule[k] = pinnedSchedule[k];
       const [cls, d, s] = k.split('|');
-      busyClass[cls][+d][+s] = true;
+      markClass(cls, +d, +s, 'both', true);
       const profId = pinnedSchedule[k].profId;
-      if (profId) busyProf[profId][+d][+s] = true;
+      if (profId) markProf(profId, +d, +s, 'both', true);
     }
 
     // Créneaux fermés (config.openSlots) : marqués "busy" pour TOUTES les
-    // classes et TOUS les profs — comme ça candidatesFor/domainSize (qui ne
-    // vérifient que busyClass/busyProf) les excluent automatiquement, sans
-    // avoir besoin d'un check `isOpen` séparé sur ce chemin très chaud.
+    // classes et TOUS les profs, dans les DEUX grilles — comme ça
+    // candidatesFor/domainSize les excluent automatiquement, sans avoir
+    // besoin d'un check `isOpen` séparé sur ce chemin très chaud.
     for (const d of dayIdxs) {
       for (let s = 0; s < slotCount; s++) {
         if (isOpen(d, s)) continue;
-        for (const cls of allSessionClasses) busyClass[cls][d][s] = true;
-        for (const p of profs) busyProf[p.id][d][s] = true;
+        for (const cls of allSessionClasses) markClass(cls, d, s, 'both', true);
+        for (const p of profs) markProf(p.id, d, s, 'both', true);
       }
     }
 
@@ -622,17 +775,18 @@ const Solver = {
     // slot), pas un par prof éligible comme pour une session normale.
     const candidatesFor = (sess) => {
       const list = [];
+      const week = sess.week;
       for (const d of dayIdxs) {
         if (sess.spreadKey && spreadUsedDay[`${sess.spreadKey}|${d}`]) continue; // jour déjà pris par une autre heure de cette matière/classe
         for (let s = 0; s < slotCount; s++) {
-          if (sess.classes.some(cls => busyClass[cls][d][s])) continue; // TOUTES les classes doivent être libres
+          if (sess.classes.some(cls => !freeClass(cls, d, s, week))) continue; // TOUTES les classes doivent être libres (sur la/les semaine(s) de cette session)
           if (sess.allRequired) {
-            if (sess.elig.some(p => busyProf[p.id][d][s])) continue;
+            if (sess.elig.some(p => !freeProf(p.id, d, s, week))) continue;
             if (sess.elig.some(p => !p.availability?.[d]?.[s])) continue;
             list.push({ day: d, slot: s, profIds: sess.elig.map(p => p.id) });
           } else {
             for (const prof of sess.elig) {
-              if (busyProf[prof.id][d][s]) continue;
+              if (!freeProf(prof.id, d, s, week)) continue;
               if (!prof.availability?.[d]?.[s]) continue;
               list.push({ day: d, slot: s, profIds: [prof.id] });
             }
@@ -645,16 +799,17 @@ const Solver = {
     // souvent (MRV + forward-checking), on évite l'allocation à chaque fois.
     const domainSize = (idx) => {
       const sess = sessions[idx];
+      const week = sess.week;
       let n = 0;
       for (const d of dayIdxs) {
         if (sess.spreadKey && spreadUsedDay[`${sess.spreadKey}|${d}`]) continue;
         for (let s = 0; s < slotCount; s++) {
-          if (sess.classes.some(cls => busyClass[cls][d][s])) continue;
+          if (sess.classes.some(cls => !freeClass(cls, d, s, week))) continue;
           if (sess.allRequired) {
-            if (sess.elig.every(p => !busyProf[p.id][d][s] && p.availability?.[d]?.[s])) n++;
+            if (sess.elig.every(p => freeProf(p.id, d, s, week) && p.availability?.[d]?.[s])) n++;
           } else {
             for (const prof of sess.elig) {
-              if (!busyProf[prof.id][d][s] && prof.availability?.[d]?.[s]) n++;
+              if (freeProf(prof.id, d, s, week) && prof.availability?.[d]?.[s]) n++;
             }
           }
         }
@@ -765,7 +920,7 @@ const Solver = {
         bestPlacements = placedStack.map(p => ({
           classes: p.sess.classes, subj: p.sess.subj, elig: p.sess.elig, spreadKey: p.sess.spreadKey,
           allRequired: p.sess.allRequired, meetingId: p.sess.meetingId, meetingName: p.sess.meetingName,
-          day: p.c.day, slot: p.c.slot, profIds: p.c.profIds,
+          week: p.sess.week, day: p.c.day, slot: p.c.slot, profIds: p.c.profIds,
         }));
       }
 
@@ -800,7 +955,7 @@ const Solver = {
           const compact = (c) => {
             let score = 0;
             for (let s = c.slot - 1; s <= c.slot + 1; s++) {
-              if (s >= 0 && s < slotCount && busyClass[repCls][c.day][s]) score--;
+              if (s >= 0 && s < slotCount && !freeClass(repCls, c.day, s, sess.week)) score--;
             }
             return score;
           };
@@ -815,13 +970,13 @@ const Solver = {
 
       for (const c of cands) {
         for (const cls of sess.classes) {
-          busyClass[cls][c.day][c.slot] = true;
-          schedule[`${cls}|${c.day}|${c.slot}`] = {
+          markClass(cls, c.day, c.slot, sess.week, true);
+          writeCell(cls, c.day, c.slot, sess.week, {
             profId: c.profIds[0], profIds: c.profIds, subj: sess.subj,
             grouped: sess.classes.length > 1, meeting: !!sess.meetingId, meetingId: sess.meetingId,
-          };
+          });
         }
-        for (const pid of c.profIds) busyProf[pid][c.day][c.slot] = true;
+        for (const pid of c.profIds) markProf(pid, c.day, c.slot, sess.week, true);
         if (sess.spreadKey) {
           const k = `${sess.spreadKey}|${c.day}`;
           spreadUsedDay[k] = (spreadUsedDay[k] || 0) + 1;
@@ -843,10 +998,10 @@ const Solver = {
         // Annuler ce candidat avant d'essayer le suivant.
         placedStack.pop();
         for (const cls of sess.classes) {
-          busyClass[cls][c.day][c.slot] = false;
-          delete schedule[`${cls}|${c.day}|${c.slot}`];
+          markClass(cls, c.day, c.slot, sess.week, false);
+          clearCell(cls, c.day, c.slot, sess.week);
         }
-        for (const pid of c.profIds) busyProf[pid][c.day][c.slot] = false;
+        for (const pid of c.profIds) markProf(pid, c.day, c.slot, sess.week, false);
         if (sess.spreadKey) {
           const k = `${sess.spreadKey}|${c.day}`;
           spreadUsedDay[k]--;
@@ -960,11 +1115,19 @@ const Solver = {
     const partialSchedule = {};
     for (const k of Object.keys(pinnedSchedule)) partialSchedule[k] = pinnedSchedule[k];
     for (const p of bestPlacements) {
+      const cellData = {
+        profId: p.profIds[0], profIds: p.profIds, subj: p.subj,
+        grouped: p.classes.length > 1, meeting: !!p.meetingId, meetingId: p.meetingId,
+      };
       for (const cls of p.classes) {
-        partialSchedule[`${cls}|${p.day}|${p.slot}`] = {
-          profId: p.profIds[0], profIds: p.profIds, subj: p.subj,
-          grouped: p.classes.length > 1, meeting: !!p.meetingId, meetingId: p.meetingId,
-        };
+        const key = `${cls}|${p.day}|${p.slot}`;
+        if (p.week === 'both' || !p.week) {
+          partialSchedule[key] = cellData;
+        } else {
+          const existing = partialSchedule[key] || {};
+          existing[p.week === 'A' ? 'weekA' : 'weekB'] = cellData;
+          partialSchedule[key] = existing;
+        }
       }
     }
     const partial = { placements: bestPlacements, missing: bestMissing, schedule: partialSchedule };
@@ -1023,7 +1186,7 @@ const Solver = {
     for (const p of partial.placements) {
       items.push({
         classes: p.classes, subj: p.subj, elig: p.elig, spreadKey: p.spreadKey || null,
-        allRequired: !!p.allRequired, meetingId: p.meetingId || null,
+        allRequired: !!p.allRequired, meetingId: p.meetingId || null, week: p.week || 'both',
         day: p.day, slot: p.slot, profIds: p.profIds || [p.profId],
       });
     }
@@ -1054,7 +1217,7 @@ const Solver = {
       }
       items.push({
         classes: m.classes, subj: m.subj, elig: m.elig, spreadKey: m.spreadKey || null,
-        allRequired: !!m.allRequired, meetingId: m.meetingId || null,
+        allRequired: !!m.allRequired, meetingId: m.meetingId || null, week: m.week || 'both',
         day: seed.day, slot: seed.slot, profIds: seed.profIds,
       });
     }
@@ -1063,29 +1226,40 @@ const Solver = {
     // par nombre d'items présents (0 ou 1 = OK, 2+ = conflit). Les épingles
     // comptent comme un occupant permanent supplémentaire qu'on ne retire
     // jamais, pour qu'un item ne puisse jamais se poser dessus sans conflit.
-    const classOcc = {};  // "cls|d|s" -> count
-    const profOcc = {};   // "profId|d|s" -> count
+    // Semaine A/B : les clés d'occupation portent un suffixe "|A" ou "|B" — un
+    // item "both" occupe les DEUX clés (comme les épingles, toujours "both"),
+    // un item "A"/"B" n'occupe QUE la sienne, ce qui permet à un item "A" et
+    // un item "B" de partager le même (classe/prof, jour, slot) sans jamais
+    // se voir en conflit — même mécanisme que `markClass`/`markProf` dans
+    // `solve()`, transposé au modèle "compteur d'occupants" de repair().
+    const classOcc = {};  // "cls|d|s|A-ou-B" -> count
+    const profOcc = {};   // "profId|d|s|A-ou-B" -> count
     const spreadOcc = {}; // "spreadKey|d" -> count de sessions de cette matière/classe déjà ce jour-là
     const bump = (map, key, delta) => { map[key] = (map[key] || 0) + delta; };
-    for (const key of Object.keys(pinnedBusyClass)) bump(classOcc, key, 1);
-    for (const key of Object.keys(pinnedBusyProf)) bump(profOcc, key, 1);
+    const weekKeys = (week) => week === 'A' ? ['A'] : week === 'B' ? ['B'] : ['A', 'B'];
+    for (const key of Object.keys(pinnedBusyClass)) { bump(classOcc, key + '|A', 1); bump(classOcc, key + '|B', 1); }
+    for (const key of Object.keys(pinnedBusyProf)) { bump(profOcc, key + '|A', 1); bump(profOcc, key + '|B', 1); }
     const place = (it, delta) => {
-      for (const cls of it.classes) bump(classOcc, `${cls}|${it.day}|${it.slot}`, delta);
-      for (const pid of it.profIds) bump(profOcc, `${pid}|${it.day}|${it.slot}`, delta);
+      for (const wk of weekKeys(it.week)) {
+        for (const cls of it.classes) bump(classOcc, `${cls}|${it.day}|${it.slot}|${wk}`, delta);
+        for (const pid of it.profIds) bump(profOcc, `${pid}|${it.day}|${it.slot}|${wk}`, delta);
+      }
       if (it.spreadKey) bump(spreadOcc, `${it.spreadKey}|${it.day}`, delta);
     };
     items.forEach(it => place(it, 1));
 
-    // Conflits d'un item = somme, sur chacune de ses classes ET sur son prof,
-    // du nombre d'AUTRES occupants au même (jour, slot), PLUS (si une règle de
-    // répartition s'applique) le nombre d'autres heures de la même matière/
-    // classe déjà posées CE JOUR-LÀ. On retire d'abord sa propre contribution
-    // (1 par classe + 1 pour le prof + 1 pour la répartition) pour ne compter
-    // que les autres.
+    // Conflits d'un item = somme, sur chacune de ses classes ET sur son prof
+    // (pour chaque semaine que cet item occupe), du nombre d'AUTRES occupants
+    // au même (jour, slot, semaine), PLUS (si une règle de répartition
+    // s'applique) le nombre d'autres heures de la même matière/classe déjà
+    // posées CE JOUR-LÀ. On retire d'abord sa propre contribution pour ne
+    // compter que les autres.
     const conflictsOf = (it) => {
       let n = 0;
-      for (const cls of it.classes) n += (classOcc[`${cls}|${it.day}|${it.slot}`] || 0) - 1;
-      for (const pid of it.profIds) n += (profOcc[`${pid}|${it.day}|${it.slot}`] || 0) - 1;
+      for (const wk of weekKeys(it.week)) {
+        for (const cls of it.classes) n += (classOcc[`${cls}|${it.day}|${it.slot}|${wk}`] || 0) - 1;
+        for (const pid of it.profIds) n += (profOcc[`${pid}|${it.day}|${it.slot}|${wk}`] || 0) - 1;
+      }
       if (it.spreadKey) n += (spreadOcc[`${it.spreadKey}|${it.day}`] || 0) - 1;
       return n;
     };
@@ -1114,6 +1288,13 @@ const Solver = {
       let bestScore = Infinity;
       let bestOptions = [];
       const allOptions = [];
+      const occScore = (day, slot) => {
+        let score = 0;
+        for (const wk of weekKeys(it.week)) {
+          for (const cls of it.classes) score += (classOcc[`${cls}|${day}|${slot}|${wk}`] || 0);
+        }
+        return score;
+      };
       for (const day of dayIdxs) {
         if (it.spreadKey && (spreadOcc[`${it.spreadKey}|${day}`] || 0) > 0) continue; // jour déjà pris par une autre heure de cette matière/classe
         for (let slot = 0; slot < slotCount; slot++) {
@@ -1122,9 +1303,10 @@ const Solver = {
           if (it.allRequired) {
             if (it.elig.some(p => pinnedBusyProf[`${p.id}|${day}|${slot}`])) continue;
             if (it.elig.some(p => !p.availability?.[day]?.[slot])) continue;
-            let score = 0;
-            for (const cls of it.classes) score += (classOcc[`${cls}|${day}|${slot}`] || 0);
-            for (const p of it.elig) score += (profOcc[`${p.id}|${day}|${slot}`] || 0);
+            let score = occScore(day, slot);
+            for (const wk of weekKeys(it.week)) {
+              for (const p of it.elig) score += (profOcc[`${p.id}|${day}|${slot}|${wk}`] || 0);
+            }
             const opt = { day, slot, profIds: it.elig.map(p => p.id) };
             allOptions.push(opt);
             if (score < bestScore) { bestScore = score; bestOptions = [opt]; }
@@ -1133,9 +1315,8 @@ const Solver = {
             for (const prof of it.elig) {
               if (pinnedBusyProf[`${prof.id}|${day}|${slot}`]) continue;
               if (!prof.availability?.[day]?.[slot]) continue;
-              let score = 0;
-              for (const cls of it.classes) score += (classOcc[`${cls}|${day}|${slot}`] || 0);
-              score += (profOcc[`${prof.id}|${day}|${slot}`] || 0);
+              let score = occScore(day, slot);
+              for (const wk of weekKeys(it.week)) score += (profOcc[`${prof.id}|${day}|${slot}|${wk}`] || 0);
               const opt = { day, slot, profIds: [prof.id] };
               allOptions.push(opt);
               if (score < bestScore) { bestScore = score; bestOptions = [opt]; }
@@ -1157,11 +1338,19 @@ const Solver = {
       const schedule = {};
       for (const k of Object.keys(pinnedSchedule)) schedule[k] = pinnedSchedule[k];
       for (const it of items) {
+        const cellData = {
+          profId: it.profIds[0], profIds: it.profIds, subj: it.subj,
+          grouped: it.classes.length > 1, meeting: !!it.meetingId, meetingId: it.meetingId,
+        };
         for (const cls of it.classes) {
-          schedule[`${cls}|${it.day}|${it.slot}`] = {
-            profId: it.profIds[0], profIds: it.profIds, subj: it.subj,
-            grouped: it.classes.length > 1, meeting: !!it.meetingId, meetingId: it.meetingId,
-          };
+          const key = `${cls}|${it.day}|${it.slot}`;
+          if (it.week === 'both' || !it.week) {
+            schedule[key] = cellData;
+          } else {
+            const existing = schedule[key] || {};
+            existing[it.week === 'A' ? 'weekA' : 'weekB'] = cellData;
+            schedule[key] = existing;
+          }
         }
       }
       return {
@@ -1195,7 +1384,7 @@ const Solver = {
   analyzeProfLoad(state) {
     const ctx = buildContext(state);
     if (!ctx.ok) return ctx;
-    const { profs, demand, groups, meetings, eligibleFor, availCountFor } = ctx;
+    const { profs, demand, demandA, demandB, groups, meetings, eligibleFor, availCountFor } = ctx;
 
     const exclusiveHours = {};   // profId -> heures
     const exclusiveLabels = {};  // profId -> Set de libellés "matière (classe)"
@@ -1218,6 +1407,29 @@ const Solver = {
         exclusiveHours[pid] = (exclusiveHours[pid] || 0) + m.hours;
         (exclusiveLabels[pid] = exclusiveLabels[pid] || new Set()).add(`${m.name} (réunion)`);
       }
+    }
+    // Semaine A/B : un prof ne porte JAMAIS les deux à la fois (elles
+    // n'arrivent jamais la même semaine) — on ajoute donc le pire des deux
+    // (la semaine la plus chargée) plutôt que la somme, pour que la marge
+    // affichée reflète la semaine réellement la plus tendue.
+    const weekExclusive = (weekDemand) => {
+      const byProf = {};
+      for (const d of weekDemand) {
+        const elig = eligibleFor(d.subj, d.cls);
+        if (elig.length !== 1) continue;
+        const pid = elig[0].id;
+        byProf[pid] = (byProf[pid] || 0) + d.hours;
+      }
+      return byProf;
+    };
+    const exclusiveA = weekExclusive(demandA);
+    const exclusiveB = weekExclusive(demandB);
+    for (const p of profs) {
+      const worst = Math.max(exclusiveA[p.id] || 0, exclusiveB[p.id] || 0);
+      if (worst === 0) continue;
+      exclusiveHours[p.id] = (exclusiveHours[p.id] || 0) + worst;
+      const weekLabel = (exclusiveA[p.id] || 0) >= (exclusiveB[p.id] || 0) ? 'A' : 'B';
+      (exclusiveLabels[p.id] = exclusiveLabels[p.id] || new Set()).add(`+${worst}h semaine ${weekLabel} (pire semaine)`);
     }
 
     const rows = profs.map(p => {

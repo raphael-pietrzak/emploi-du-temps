@@ -28,7 +28,10 @@ Object.assign(UI, {
   renderProfs() {
     const list = document.getElementById('profs-list');
     list.innerHTML = '';
-    this.state.profs.forEach(p => {
+    // Tri alphabétique à l'affichage seulement — l'ordre réel de state.profs
+    // (et donc l'ordre d'ajout) n'est pas modifié.
+    const sorted = this.state.profs.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    sorted.forEach(p => {
       const li = document.createElement('li');
       if (p.id === this.selectedProfId) li.classList.add('selected');
       li.innerHTML = `<span>${p.name}</span><button class="del" title="Supprimer">×</button>`;

@@ -10,6 +10,8 @@ Object.assign(UI, {
         const s = await Storage.import(f);
         Object.assign(this.state, s);
         this.migrateState();
+        this.lastPartial = null;
+        this.viewingSavedId = null;
         this.onChange();
         this.renderAll();
         alert('Import réussi.');

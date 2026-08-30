@@ -40,9 +40,12 @@ Application vanilla sans build ni modules ES : chaque script est chargé par `in
 
 ```
 { config: { classes, subjects, slots, days, openSlots },
-  volumes: { "classe|matière": heures },
+  volumes: { "classe|matière": heures },   // toutes les semaines
+  volumesA: { "classe|matière": heures },  // en plus, semaines A seulement
+  volumesB: { "classe|matière": heures },  // en plus, semaines B seulement
   profs:   [{ id, name, subjectClasses: {matière: [classes]}, availability: [jours][slots] }],
   constraints: { pins: [...], groups: [...], spread: [...], meetings: [...] },
   options: { noGapsForStudents },
-  schedule: { "classe|jour|slot": { subj, profId, pinned } } | null }
+  schedule: { "classe|jour|slot": { subj, profId, pinned } } | null,
+  savedSchedules: [{ id, name, date, schedule, message }] }
 ```

@@ -30,6 +30,9 @@ const UI = {
     if (!this.state.constraints.groups) this.state.constraints.groups = [];
     if (!this.state.constraints.spread) this.state.constraints.spread = [];
     if (!this.state.constraints.meetings) this.state.constraints.meetings = [];
+    if (!this.state.volumesA) this.state.volumesA = {};
+    if (!this.state.volumesB) this.state.volumesB = {};
+    if (!this.state.savedSchedules) this.state.savedSchedules = [];
 
     // Migration : "jours actifs" (booléen par jour) → "créneaux ouverts"
     // (booléen par jour ET créneau), qui permet de fermer une demi-journée
@@ -76,6 +79,9 @@ const UI = {
     this.renderConfig();
     this.renderProfs();
     this.renderConstraints();
+    this.updateSaveButton();
+    this.updateRepairButton();
+    this.renderSavedSchedules();
     this.renderSchedule();
   },
 };

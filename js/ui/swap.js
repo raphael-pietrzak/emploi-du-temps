@@ -64,9 +64,10 @@ Object.assign(UI, {
   //  2. prof_A disponible et libre à (d2, s2) — en excluant la cellule B si prof_A y est déjà.
   //  3. Symétrique pour prof_B à (d1, s1) si B est occupé.
   canSwap(clsA, d1, s1, a, clsB, d2, s2, b) {
-    // Épingles intouchables, et cellules multi-profs (réunion/cours co-enseigné) :
-    // la logique de swap ci-dessous ne gère qu'un seul profId par cellule.
-    if (a.pinned || b?.pinned || a.meeting || b?.meeting) return false;
+    // Épingles intouchables, cellules multi-profs (réunion/cours co-enseigné),
+    // et cellules alternant semaine A/B : la logique de swap ci-dessous ne
+    // gère qu'un seul profId et une seule matière par cellule.
+    if (a.pinned || b?.pinned || a.meeting || b?.meeting || a.weekA || a.weekB || b?.weekA || b?.weekB) return false;
     // Règle 1 : volumes.
     if (b) {
       if (clsA !== clsB && a.subj !== b.subj) return false;

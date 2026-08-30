@@ -62,8 +62,11 @@ const Storage = {
         subjects: ['Maths', 'Français', 'Anglais', 'Histoire-Géo', 'SVT', 'Physique', 'EPS', 'Arts', 'Musique', 'Techno'],
       },
       profs: [],
-      volumes: {},  // "classe|matiere" -> heures
+      volumes: {},  // "classe|matiere" -> heures (toutes les semaines)
+      volumesA: {}, // "classe|matiere" -> heures EN PLUS, uniquement les semaines A
+      volumesB: {}, // "classe|matiere" -> heures EN PLUS, uniquement les semaines B
       schedule: null,
+      savedSchedules: [], // [{ id, name, date, schedule, message }] — versions gardées de côté pour comparer, jamais écrasées par une nouvelle génération
       constraints: {
         pins: [],       // { id, subj, classes:[..], day, slot, profId?: null }
         groups: [],     // { id, subj, classes:[..] (>=2), hours, profId?: null } — regroupées, mais sans jour/créneau imposé
