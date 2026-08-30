@@ -12,6 +12,7 @@
 // précédente via SVG foreignObject, qui échouait sur Safari).
 
 const PAGE_W = 842, PAGE_H = 595; // A4 paysage, en points (72/pouce)
+const A3_W = 1191, A3_H = 842; // A3 paysage
 const MARGIN = 36;
 
 Object.assign(UI, {
@@ -75,6 +76,73 @@ Object.assign(UI, {
     });
   },
 
+  // Page A3 paysage unique regroupant `classes` côte à côte : mêmes lignes
+  // (créneaux) que buildScheduleTablePage, mais chaque colonne "jour" est
+  // elle-même subdivisée en une sous-colonne par classe (au lieu d'une page
+  // A4 par classe) — pensée pour un affichage/impression unique montrant
+  // toutes les classes d'un coup (typiquement 6e/5e/4e/3e).
+  buildCombinedClassesPage(doc, classes, schedule) {
+    const page = doc.addPage(A3_W, A3_H);
+    page.text(MARGIN, MARGIN + 14, 'Emploi du temps — ' + classes.join(' / '), { font: 'bold', size: 17 });
+
+    const { days, slots } = this.state.config;
+    const activeDays = this.activeDayIndices();
+    const openSlots = this.state.config.openSlots || [];
+    const n = classes.length;
+
+    const tableTop = MARGIN + 36;
+    const labelW = 60;
+    const tableW = A3_W - MARGIN * 2;
+    const dayW = (tableW - labelW) / activeDays.length;
+    const classW = dayW / n;
+    const dayHeaderH = 20;
+    const classHeaderH = 16;
+    const headerH = dayHeaderH + classHeaderH;
+    const maxBodyH = A3_H - MARGIN - tableTop - headerH;
+    const rowH = Math.min(46, maxBodyH / slots.length);
+
+    page.rect(MARGIN, tableTop, labelW, headerH, { fill: '#e8e8e8', stroke: '#000000' });
+    activeDays.forEach((di, i) => {
+      const dx = MARGIN + labelW + i * dayW;
+      page.rect(dx, tableTop, dayW, dayHeaderH, { fill: '#dcdcdc', stroke: '#000000' });
+      page.centerText(dx, tableTop, dayW, dayHeaderH, days[di].toUpperCase(), { font: 'bold', size: 10 });
+      classes.forEach((cls, ci) => {
+        const cx = dx + ci * classW;
+        page.rect(cx, tableTop + dayHeaderH, classW, classHeaderH, { fill: '#eeeeee', stroke: '#000000' });
+        page.centerText(cx, tableTop + dayHeaderH, classW, classHeaderH, cls, { font: 'bold', size: 8 });
+      });
+    });
+
+    slots.forEach((sl, si) => {
+      const y = tableTop + headerH + si * rowH;
+      page.rect(MARGIN, y, labelW, rowH, { fill: '#f5f5f5', stroke: '#000000' });
+      page.centerText(MARGIN, y, labelW, rowH, `${sl.start}-${sl.end}`, { size: 7.5, color: '#333333' });
+
+      activeDays.forEach((di, i) => {
+        const dx = MARGIN + labelW + i * dayW;
+        const open = (openSlots[di] || [])[si] !== false;
+        classes.forEach((cls, ci) => {
+          const cx = dx + ci * classW;
+          const c = this.cellDescriptor(schedule[`${cls}|${di}|${si}`]);
+          if (c?.alt) {
+            page.rect(cx, y, classW, rowH, { fill: '#ffffff', stroke: '#000000' });
+            const halfH = rowH / 2;
+            [['A', c.weekA, y], ['B', c.weekB, y + halfH]].forEach(([tag, box, by]) => {
+              page.text(cx + 2, by + 6, tag, { size: 5, color: '#888888' });
+              if (box) page.twoLineText(cx, by + 4, classW, halfH - 4, box.top, box.bottom, { size1: 6, size2: 5, minSize: 3.5 });
+            });
+            page.line(cx, y + halfH, cx + classW, y + halfH, { stroke: '#999999', lineWidth: 0.4 });
+          } else if (c) {
+            page.rect(cx, y, classW, rowH, { fill: '#ffffff', stroke: '#000000' });
+            page.twoLineText(cx, y, classW, rowH, c.top, c.bottom, { size1: 6.5, size2: 5.5, minSize: 3.5 });
+          } else {
+            page.rect(cx, y, classW, rowH, { fill: open ? '#ffffff' : '#e2e2e2', stroke: '#000000' });
+          }
+        });
+      });
+    });
+  },
+
   captureSafeFilename(s) {
     return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'sans-nom';
@@ -97,6 +165,7 @@ Object.assign(UI, {
       const files = [];
 
       const generalDoc = new PDFDoc.Doc();
+      this.buildCombinedClassesPage(generalDoc, this.state.config.classes, schedule);
       this.state.config.classes.forEach(cls => {
         this.buildScheduleTablePage(generalDoc, 'Classe ' + cls, (d, s) => this.cellDescriptor(schedule[`${cls}|${d}|${s}`]));
       });
