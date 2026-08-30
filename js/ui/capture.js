@@ -12,7 +12,7 @@
 // précédente via SVG foreignObject, qui échouait sur Safari).
 
 const PAGE_W = 842, PAGE_H = 595; // A4 paysage, en points (72/pouce)
-const A3_W = 1191, A3_H = 842; // A3 paysage
+const A3_PORTRAIT_W = 842, A3_PORTRAIT_H = 1191; // A3 portrait
 const MARGIN = 36;
 
 Object.assign(UI, {
@@ -22,124 +22,93 @@ Object.assign(UI, {
     btn.addEventListener('click', () => this.exportCapturesZip());
   },
 
-  // Dessine une page A4 paysage : titre + tableau (créneaux en lignes, jours
-  // actifs en colonnes). `cellFor(d, s)` doit renvoyer le même format de
-  // descripteur que cellDescriptor/profCellData : null, {top,bottom,pinned?},
-  // ou {alt:true, weekA, weekB}.
-  buildScheduleTablePage(doc, title, cellFor) {
-    const page = doc.addPage(PAGE_W, PAGE_H);
-    page.text(MARGIN, MARGIN + 12, title, { font: 'bold', size: 15 });
+  // Dessine un bloc "titre + tableau" (créneaux en lignes, jours actifs en
+  // colonnes) dans le rectangle (x, yTop, w, h) donné — indépendant de la
+  // taille de page, pour pouvoir soit occuper une page A4 entière
+  // (buildScheduleTablePage) soit être empilé plusieurs fois sur une même
+  // page (buildCombinedClassesPage). `cellFor(d, s)` doit renvoyer le même
+  // format de descripteur que cellDescriptor/profCellData : null,
+  // {top,bottom,pinned?}, ou {alt:true, weekA, weekB}.
+  drawScheduleBlock(page, x, yTop, w, h, title, cellFor, opts = {}) {
+    const { titleSize = 15, cellSize, titleGapBefore = false } = opts;
+    const titleAreaH = 32;
+    // Par défaut le titre colle au haut du bloc et l'espace se trouve entre
+    // lui et le tableau (buildScheduleTablePage : rien au-dessus du titre).
+    // `titleGapBefore` inverse ça — utile quand plusieurs blocs sont
+    // empilés (buildCombinedClassesPage) : l'espace doit séparer le tableau
+    // du bloc précédent du titre suivant, pas le titre de son propre
+    // tableau, sous peine de gâcher de la hauteur inutilement.
+    const titleY = titleGapBefore ? yTop + titleAreaH - 8 : yTop + 12;
+    page.text(x, titleY, title, { font: 'bold', size: titleSize });
 
     const { days, slots } = this.state.config;
     const activeDays = this.activeDayIndices();
     const openSlots = this.state.config.openSlots || [];
 
-    const tableTop = MARGIN + 32;
+    const tableTop = yTop + titleAreaH;
     const labelW = 58;
-    const tableW = PAGE_W - MARGIN * 2;
-    const dayW = (tableW - labelW) / activeDays.length;
+    const dayW = (w - labelW) / activeDays.length;
     const headerH = 20;
-    const maxBodyH = PAGE_H - MARGIN - tableTop - headerH;
+    const maxBodyH = h - titleAreaH - headerH;
     const rowH = Math.min(42, maxBodyH / slots.length);
 
-    page.rect(MARGIN, tableTop, labelW, headerH, { fill: '#e8e8e8', stroke: '#000000' });
+    page.rect(x, tableTop, labelW, headerH, { fill: '#e8e8e8', stroke: '#000000' });
     activeDays.forEach((di, i) => {
-      const x = MARGIN + labelW + i * dayW;
-      page.rect(x, tableTop, dayW, headerH, { fill: '#e8e8e8', stroke: '#000000' });
-      page.centerText(x, tableTop, dayW, headerH, days[di].toUpperCase(), { font: 'bold', size: 9 });
+      const cx = x + labelW + i * dayW;
+      page.rect(cx, tableTop, dayW, headerH, { fill: '#e8e8e8', stroke: '#000000' });
+      page.centerText(cx, tableTop, dayW, headerH, days[di].toUpperCase(), { font: 'bold', size: 9 });
     });
 
     slots.forEach((sl, si) => {
-      const y = tableTop + headerH + si * rowH;
-      page.rect(MARGIN, y, labelW, rowH, { fill: '#f5f5f5', stroke: '#000000' });
-      page.centerText(MARGIN, y, labelW, rowH, `${sl.start}-${sl.end}`, { size: 7.5, color: '#333333' });
+      const cy = tableTop + headerH + si * rowH;
+      page.rect(x, cy, labelW, rowH, { fill: '#f5f5f5', stroke: '#000000' });
+      page.centerText(x, cy, labelW, rowH, `${sl.start}-${sl.end}`, { size: 7.5, color: '#333333' });
 
       activeDays.forEach((di, i) => {
-        const x = MARGIN + labelW + i * dayW;
+        const cx = x + labelW + i * dayW;
         const open = (openSlots[di] || [])[si] !== false;
         const c = cellFor(di, si);
         if (c?.alt) {
-          page.rect(x, y, dayW, rowH, { fill: '#ffffff', stroke: '#000000' });
+          page.rect(cx, cy, dayW, rowH, { fill: '#ffffff', stroke: '#000000' });
           const halfW = dayW / 2;
-          [['A', c.weekA, x], ['B', c.weekB, x + halfW]].forEach(([tag, box, bx]) => {
-            page.text(bx + 3, y + 8, tag, { size: 6, color: '#888888' });
-            if (box) page.twoLineText(bx, y + 6, halfW, rowH - 6, box.top, box.bottom, { size1: 7, size2: 6, minSize: 4.5 });
+          [['A', c.weekA, cx], ['B', c.weekB, cx + halfW]].forEach(([tag, box, bx]) => {
+            page.text(bx + 3, cy + 8, tag, { size: 6, color: '#888888' });
+            if (box) page.twoLineText(bx, cy + 6, halfW, rowH - 6, box.top, box.bottom, { size1: cellSize ?? 7, size2: (cellSize ?? 7) - 1, minSize: 4.5 });
           });
-          page.line(x + halfW, y, x + halfW, y + rowH, { stroke: '#999999', lineWidth: 0.5 });
+          page.line(cx + halfW, cy, cx + halfW, cy + rowH, { stroke: '#999999', lineWidth: 0.5 });
         } else if (c) {
-          page.rect(x, y, dayW, rowH, { fill: '#ffffff', stroke: '#000000' });
-          page.twoLineText(x, y, dayW, rowH, c.top, c.bottom);
+          page.rect(cx, cy, dayW, rowH, { fill: '#ffffff', stroke: '#000000' });
+          page.twoLineText(cx, cy, dayW, rowH, c.top, c.bottom, cellSize ? { size1: cellSize, size2: cellSize - 1 } : {});
         } else {
-          page.rect(x, y, dayW, rowH, { fill: open ? '#ffffff' : '#e2e2e2', stroke: '#000000' });
+          page.rect(cx, cy, dayW, rowH, { fill: open ? '#ffffff' : '#e2e2e2', stroke: '#000000' });
         }
       });
     });
   },
 
-  // Page A3 paysage unique regroupant `classes` côte à côte : mêmes lignes
-  // (créneaux) que buildScheduleTablePage, mais chaque colonne "jour" est
-  // elle-même subdivisée en une sous-colonne par classe (au lieu d'une page
-  // A4 par classe) — pensée pour un affichage/impression unique montrant
-  // toutes les classes d'un coup (typiquement 6e/5e/4e/3e).
+  // Dessine une page A4 paysage : titre + tableau plein page.
+  buildScheduleTablePage(doc, title, cellFor) {
+    const page = doc.addPage(PAGE_W, PAGE_H);
+    this.drawScheduleBlock(page, MARGIN, MARGIN, PAGE_W - MARGIN * 2, PAGE_H - MARGIN * 2, title, cellFor);
+  },
+
+  // Page A3 portrait unique empilant les tableaux de `classes` les uns sous
+  // les autres (au lieu d'une page A4 par classe) — pensée pour un
+  // affichage/impression unique montrant toutes les classes d'un coup
+  // (typiquement 6e/5e/4e/3e), chaque classe gardant son propre tableau
+  // complet plutôt que d'être fusionnée avec les autres dans des colonnes.
   buildCombinedClassesPage(doc, classes, schedule) {
-    const page = doc.addPage(A3_W, A3_H);
-    page.text(MARGIN, MARGIN + 14, 'Emploi du temps — ' + classes.join(' / '), { font: 'bold', size: 17 });
-
-    const { days, slots } = this.state.config;
-    const activeDays = this.activeDayIndices();
-    const openSlots = this.state.config.openSlots || [];
-    const n = classes.length;
-
-    const tableTop = MARGIN + 36;
-    const labelW = 60;
-    const tableW = A3_W - MARGIN * 2;
-    const dayW = (tableW - labelW) / activeDays.length;
-    const classW = dayW / n;
-    const dayHeaderH = 20;
-    const classHeaderH = 16;
-    const headerH = dayHeaderH + classHeaderH;
-    const maxBodyH = A3_H - MARGIN - tableTop - headerH;
-    const rowH = Math.min(46, maxBodyH / slots.length);
-
-    page.rect(MARGIN, tableTop, labelW, headerH, { fill: '#e8e8e8', stroke: '#000000' });
-    activeDays.forEach((di, i) => {
-      const dx = MARGIN + labelW + i * dayW;
-      page.rect(dx, tableTop, dayW, dayHeaderH, { fill: '#dcdcdc', stroke: '#000000' });
-      page.centerText(dx, tableTop, dayW, dayHeaderH, days[di].toUpperCase(), { font: 'bold', size: 10 });
-      classes.forEach((cls, ci) => {
-        const cx = dx + ci * classW;
-        page.rect(cx, tableTop + dayHeaderH, classW, classHeaderH, { fill: '#eeeeee', stroke: '#000000' });
-        page.centerText(cx, tableTop + dayHeaderH, classW, classHeaderH, cls, { font: 'bold', size: 8 });
-      });
-    });
-
-    slots.forEach((sl, si) => {
-      const y = tableTop + headerH + si * rowH;
-      page.rect(MARGIN, y, labelW, rowH, { fill: '#f5f5f5', stroke: '#000000' });
-      page.centerText(MARGIN, y, labelW, rowH, `${sl.start}-${sl.end}`, { size: 7.5, color: '#333333' });
-
-      activeDays.forEach((di, i) => {
-        const dx = MARGIN + labelW + i * dayW;
-        const open = (openSlots[di] || [])[si] !== false;
-        classes.forEach((cls, ci) => {
-          const cx = dx + ci * classW;
-          const c = this.cellDescriptor(schedule[`${cls}|${di}|${si}`]);
-          if (c?.alt) {
-            page.rect(cx, y, classW, rowH, { fill: '#ffffff', stroke: '#000000' });
-            const halfH = rowH / 2;
-            [['A', c.weekA, y], ['B', c.weekB, y + halfH]].forEach(([tag, box, by]) => {
-              page.text(cx + 2, by + 6, tag, { size: 5, color: '#888888' });
-              if (box) page.twoLineText(cx, by + 4, classW, halfH - 4, box.top, box.bottom, { size1: 6, size2: 5, minSize: 3.5 });
-            });
-            page.line(cx, y + halfH, cx + classW, y + halfH, { stroke: '#999999', lineWidth: 0.4 });
-          } else if (c) {
-            page.rect(cx, y, classW, rowH, { fill: '#ffffff', stroke: '#000000' });
-            page.twoLineText(cx, y, classW, rowH, c.top, c.bottom, { size1: 6.5, size2: 5.5, minSize: 3.5 });
-          } else {
-            page.rect(cx, y, classW, rowH, { fill: open ? '#ffffff' : '#e2e2e2', stroke: '#000000' });
-          }
-        });
-      });
+    const page = doc.addPage(A3_PORTRAIT_W, A3_PORTRAIT_H);
+    const innerW = A3_PORTRAIT_W - MARGIN * 2;
+    const innerH = A3_PORTRAIT_H - MARGIN * 2;
+    const blockH = innerH / classes.length;
+    classes.forEach((cls, i) => {
+      const yTop = MARGIN + i * blockH;
+      this.drawScheduleBlock(
+        page, MARGIN, yTop, innerW, blockH, 'Classe ' + cls,
+        (d, s) => this.cellDescriptor(schedule[`${cls}|${d}|${s}`]),
+        { titleSize: 13, cellSize: 6.5, titleGapBefore: i > 0 }
+      );
     });
   },
 
