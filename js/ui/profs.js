@@ -25,6 +25,29 @@ Object.assign(UI, {
     return this.state.config.days.map(() => new Array(this.state.config.slots.length).fill(true));
   },
 
+  // Nombre d'heures hebdomadaires que l'emploi du temps actuel donne à ce
+  // prof (moyenne sur 2 semaines s'il a des cellules alternantes semaine
+  // A/B — une cellule alt occupe le créneau une semaine sur deux, donc
+  // compte pour 0.5h côté "moyenne par semaine" plutôt que 1h). Retourne
+  // null si aucun emploi du temps n'est encore généré (rien à compter).
+  profScheduledHours(profId) {
+    const schedule = this.state.schedule;
+    if (!schedule) return null;
+    let total = 0;
+    for (const key in schedule) {
+      const cell = schedule[key];
+      if (!cell) continue;
+      if (cell.weekA || cell.weekB) {
+        if (cell.weekA && (cell.weekA.profIds || [cell.weekA.profId]).includes(profId)) total += 0.5;
+        if (cell.weekB && (cell.weekB.profIds || [cell.weekB.profId]).includes(profId)) total += 0.5;
+      } else if ((cell.profIds || [cell.profId]).includes(profId)) {
+        total += 1;
+      }
+    }
+    // Arrondi à 0.5h près pour éviter les artefacts flottants (ex: 3 * 0.5 = 1.4999...).
+    return Math.round(total * 2) / 2;
+  },
+
   renderProfs() {
     const list = document.getElementById('profs-list');
     list.innerHTML = '';
@@ -34,7 +57,9 @@ Object.assign(UI, {
     sorted.forEach(p => {
       const li = document.createElement('li');
       if (p.id === this.selectedProfId) li.classList.add('selected');
-      li.innerHTML = `<span>${p.name}</span><button class="del" title="Supprimer">×</button>`;
+      const hrs = this.profScheduledHours(p.id);
+      const hrsTxt = hrs === null ? '' : ` <span class="prof-hours">${hrs}h</span>`;
+      li.innerHTML = `<span>${p.name}${hrsTxt}</span><button class="del" title="Supprimer">×</button>`;
       li.addEventListener('click', e => {
         if (e.target.classList.contains('del')) return;
         this.selectedProfId = p.id;
@@ -52,6 +77,109 @@ Object.assign(UI, {
     });
     this.renderProfEditor();
     this.renderLoadReport();
+    this.renderCombinedAvail();
+  },
+
+  // Sélection de profs pour la grille de disponibilités combinées ci-dessous
+  // (ex. pour choisir un créneau de réunion) — état purement UI, non persisté.
+  combinedAvailSelected: new Set(),
+
+  // Par défaut true : exclure aussi les créneaux où un prof sélectionné est
+  // déjà occupé dans l'emploi du temps actuel, pas seulement indisponible.
+  // Désactivable (case à cocher) pour ne voir que la disponibilité "brute"
+  // peinte sur chaque prof, sans tenir compte de l'emploi du temps généré.
+  combinedAvailUseSchedule: true,
+
+  renderCombinedAvail() {
+    const chipsWrap = document.getElementById('combined-avail-profs');
+    const gridWrap = document.getElementById('combined-avail-grid-wrap');
+    if (!chipsWrap || !gridWrap) return;
+
+    const toggle = document.getElementById('combined-avail-use-schedule');
+    if (toggle) {
+      toggle.checked = this.combinedAvailUseSchedule;
+      toggle.onchange = () => {
+        this.combinedAvailUseSchedule = toggle.checked;
+        this.renderCombinedAvail();
+      };
+    }
+
+    // Nettoie la sélection des profs supprimés entre-temps.
+    const validIds = new Set(this.state.profs.map(p => p.id));
+    for (const id of this.combinedAvailSelected) {
+      if (!validIds.has(id)) this.combinedAvailSelected.delete(id);
+    }
+
+    chipsWrap.innerHTML = '';
+    const sorted = this.state.profs.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    sorted.forEach(p => {
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (this.combinedAvailSelected.has(p.id) ? ' active' : '');
+      chip.textContent = p.name;
+      chip.addEventListener('click', () => {
+        if (this.combinedAvailSelected.has(p.id)) this.combinedAvailSelected.delete(p.id);
+        else this.combinedAvailSelected.add(p.id);
+        this.renderCombinedAvail();
+      });
+      chipsWrap.appendChild(chip);
+    });
+
+    gridWrap.innerHTML = '';
+    if (this.combinedAvailSelected.size === 0) {
+      gridWrap.innerHTML = '<p class="hint">Sélectionne au moins un prof ci-dessus.</p>';
+      return;
+    }
+
+    const selectedIds = Array.from(this.combinedAvailSelected);
+    const selectedProfs = selectedIds.map(id => this.state.profs.find(p => p.id === id)).filter(Boolean);
+    const isBusy = (profId, d, s) => {
+      for (const c of this.state.config.classes) {
+        const cell = this.state.schedule?.[`${c}|${d}|${s}`];
+        if (!cell) continue;
+        if (cell.weekA || cell.weekB) {
+          if (cell.weekA && (cell.weekA.profIds || [cell.weekA.profId]).includes(profId)) return true;
+          if (cell.weekB && (cell.weekB.profIds || [cell.weekB.profId]).includes(profId)) return true;
+        } else if ((cell.profIds || [cell.profId]).includes(profId)) return true;
+      }
+      for (const m of this.state.constraints.meetings || []) {
+        if (m.classes && m.classes.length > 0) continue;
+        const cell = this.state.schedule?.[`@meeting:${m.id}|${d}|${s}`];
+        if (cell && (cell.profIds || [cell.profId]).includes(profId)) return true;
+      }
+      return false;
+    };
+
+    const t = document.createElement('table');
+    t.className = 'grid-table';
+    const activeDays = new Set(this.activeDayIndices());
+    const openSlots = this.state.config.openSlots || [];
+    let html = '<thead><tr><th>Créneau</th>';
+    this.state.config.days.forEach((d, i) => {
+      if (activeDays.has(i)) html += `<th>${d}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    this.state.config.slots.forEach((sl, si) => {
+      html += `<tr><td class="slot-label">${sl.start} – ${sl.end}</td>`;
+      this.state.config.days.forEach((_, di) => {
+        if (!activeDays.has(di)) return;
+        const open = (openSlots[di] || [])[si] !== false;
+        if (!open) {
+          html += `<td class="cell-avail closed" data-d="${di}" data-s="${si}" title="Fermé"></td>`;
+          return;
+        }
+        const useSchedule = this.combinedAvailUseSchedule;
+        const allFree = selectedProfs.every(p => p.availability?.[di]?.[si] && (!useSchedule || !isBusy(p.id, di, si)));
+        const title = selectedProfs.map(p => {
+          if (!p.availability?.[di]?.[si]) return `${p.name}: indispo`;
+          return `${p.name}: ${useSchedule && isBusy(p.id, di, si) ? 'occupé' : 'libre'}`;
+        }).join(' · ');
+        html += `<td class="cell-avail ${allFree ? 'on' : ''}" data-d="${di}" data-s="${si}" title="${title}"></td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody>';
+    t.innerHTML = html;
+    gridWrap.appendChild(t);
   },
 
   renderLoadReport() {
@@ -103,12 +231,13 @@ Object.assign(UI, {
       });
     }
 
-    document.getElementById('prof-name-title').textContent = prof.name;
+    const hrs = this.profScheduledHours(prof.id);
+    document.getElementById('prof-name-title').textContent = prof.name + (hrs !== null ? ` — ${hrs}h/semaine` : '');
     const nameInp = document.getElementById('prof-name-input');
     nameInp.value = prof.name;
     nameInp.oninput = e => {
       prof.name = e.target.value;
-      document.getElementById('prof-name-title').textContent = prof.name;
+      document.getElementById('prof-name-title').textContent = prof.name + (hrs !== null ? ` — ${hrs}h/semaine` : '');
       const li = document.querySelector('#profs-list li.selected span');
       if (li) li.textContent = prof.name;
       this.onChange();

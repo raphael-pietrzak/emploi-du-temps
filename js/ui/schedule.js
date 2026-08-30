@@ -252,7 +252,7 @@ Object.assign(UI, {
         cont.appendChild(banner);
         const schedule = saved.schedule;
         if (view.startsWith('prof:')) {
-          cont.appendChild(this.buildProfGrid(view.slice(5), schedule));
+          cont.appendChild(this.buildProfGrid(view.slice(5), schedule, true));
         } else if (view.startsWith('class:')) {
           cont.appendChild(this.buildClassBlock(view.slice(6), schedule, true));
         } else {
@@ -286,7 +286,7 @@ Object.assign(UI, {
       cont.appendChild(banner);
       const schedule = this.lastPartial.schedule;
       if (view.startsWith('prof:')) {
-        cont.appendChild(this.buildProfGrid(view.slice(5), schedule));
+        cont.appendChild(this.buildProfGrid(view.slice(5), schedule, true));
       } else if (view.startsWith('class:')) {
         cont.appendChild(this.buildClassBlock(view.slice(6), schedule, true));
       } else {
@@ -314,7 +314,17 @@ Object.assign(UI, {
     h.textContent = 'Réunion — ' + meeting.name;
     wrap.appendChild(h);
     const grid = this.buildScheduleGrid((d, s) => this.cellDescriptor(schedule[`${pseudoKey}|${d}|${s}`]));
-    // Lecture seule : le swap ne sait pas gérer les cellules multi-profs sans classe.
+    // Éditable uniquement sur l'état courant (pas sur une version sauvegardée
+    // ou un essai partiel, passés ici avec un `schedule` différent de l'état) :
+    // on peut déplacer le créneau de la réunion vers un autre créneau où TOUS
+    // les profs concernés sont dispos et libres (voir canMoveMeeting).
+    if (schedule === this.state.schedule) {
+      grid.querySelectorAll('.cell-sched').forEach(td => {
+        td.dataset.meeting = meeting.id;
+        td.classList.add('swappable');
+        td.addEventListener('click', () => this.handleMeetingSwapClick(td, meeting.id));
+      });
+    }
     wrap.appendChild(grid);
     return wrap;
   },
@@ -359,49 +369,78 @@ Object.assign(UI, {
     return wrap;
   },
 
-  buildProfGrid(profId, schedule = this.state.schedule) {
+  // Descripteur de cellule pour LA vue d'un prof donné, à (d, s) — factorisé
+  // hors de buildProfGrid pour être réutilisable telle quelle par l'export PDF
+  // (capture.js), qui a besoin de la même logique sans passer par le DOM.
+  // Un prof peut apparaître sur plusieurs classes (épingle/groupe multi-classes)
+  // et/ou via une réunion à plusieurs profs obligatoires (cell.profIds), et/ou
+  // dans une SEULE des deux semaines d'une cellule alternante (cell.weekA/weekB)
+  // — les trois cas doivent être distingués pour que sa vue perso alterne
+  // correctement elle aussi, pas seulement la vue par classe.
+  // Retourne { descriptor, singleCls } : singleCls est la classe à utiliser
+  // pour le swap quand la cellule est un cas "simple" (une seule classe, pas
+  // d'épingle, pas de réunion), sinon null.
+  profCellData(profId, d, s, schedule) {
+    const meetingKeys = this.meetingsWithoutClass().map(m => `@meeting:${m.id}`);
+    const nameOfCls = cls => cls.startsWith('@meeting:') ? 'réunion' : cls;
+    const found = []; // sessions "both" (multi-classes possible)
+    let weekABox = null, weekBBox = null;
+    for (const cls of this.state.config.classes.concat(meetingKeys)) {
+      const cell = schedule[`${cls}|${d}|${s}`];
+      if (!cell) continue;
+      if (cell.weekA || cell.weekB) {
+        if (cell.weekA && (cell.weekA.profIds || [cell.weekA.profId]).includes(profId)) {
+          weekABox = { top: cell.weekA.subj, bottom: nameOfCls(cls) };
+        }
+        if (cell.weekB && (cell.weekB.profIds || [cell.weekB.profId]).includes(profId)) {
+          weekBBox = { top: cell.weekB.subj, bottom: nameOfCls(cls) };
+        }
+      } else if ((cell.profIds || [cell.profId]).includes(profId)) {
+        found.push({ cls, cell });
+      }
+    }
+    if (weekABox || weekBBox) return { descriptor: { alt: true, weekA: weekABox, weekB: weekBBox }, singleCls: null };
+    if (found.length === 0) return { descriptor: null, singleCls: null };
+    const singleCls = (found.length === 1 && !found[0].cell.pinned && !found[0].cell.meeting) ? found[0].cls : null;
+    const pinned = found.some(f => f.cell.pinned);
+    return {
+      descriptor: { top: found[0].cell.subj, bottom: found.map(f => nameOfCls(f.cls)).join(', '), pinned },
+      singleCls,
+    };
+  },
+
+  buildProfGrid(profId, schedule = this.state.schedule, readOnly = false) {
     const prof = this.state.profs.find(p => p.id === profId);
     const wrap = document.createElement('div');
     wrap.className = 'class-block';
     const h = document.createElement('h3');
     h.textContent = 'Prof ' + (prof ? prof.name : profId);
     wrap.appendChild(h);
-    // Une réunion sans classe vit sous une clé fictive "@meeting:<id>" (voir
-    // buildContext dans solver.js) : il faut aussi la scanner ici pour que ce
-    // prof la voie apparaître dans SON emploi du temps.
-    const meetingKeys = this.meetingsWithoutClass().map(m => `@meeting:${m.id}`);
-    const nameOfCls = cls => cls.startsWith('@meeting:') ? 'réunion' : cls;
-    wrap.appendChild(this.buildScheduleGrid((d, s) => {
-      // Un prof peut apparaître sur plusieurs classes (épingle/groupe multi-classes)
-      // et/ou via une réunion à plusieurs profs obligatoires (cell.profIds), et/ou
-      // dans une SEULE des deux semaines d'une cellule alternante (cell.weekA/weekB)
-      // — les trois cas doivent être distingués pour que sa vue perso alterne
-      // correctement elle aussi, pas seulement la vue par classe.
-      const found = []; // sessions "both" (multi-classes possible)
-      let weekABox = null, weekBBox = null;
-      for (const cls of this.state.config.classes.concat(meetingKeys)) {
-        const cell = schedule[`${cls}|${d}|${s}`];
-        if (!cell) continue;
-        if (cell.weekA || cell.weekB) {
-          if (cell.weekA && (cell.weekA.profIds || [cell.weekA.profId]).includes(profId)) {
-            weekABox = { top: cell.weekA.subj, bottom: nameOfCls(cls) };
-          }
-          if (cell.weekB && (cell.weekB.profIds || [cell.weekB.profId]).includes(profId)) {
-            weekBBox = { top: cell.weekB.subj, bottom: nameOfCls(cls) };
-          }
-        } else if ((cell.profIds || [cell.profId]).includes(profId)) {
-          found.push({ cls, cell });
+    // "d|s" -> classe, uniquement pour les créneaux échangeables : une seule
+    // classe/session simple à cet instant (pas de groupe multi-classes, pas
+    // de réunion, pas d'épingle, pas d'alternance A/B) — le swap suppose un
+    // seul (classe, prof) par cellule, comme pour la vue classe.
+    const singleClsFor = {};
+    const grid = this.buildScheduleGrid((d, s) => {
+      const { descriptor, singleCls } = this.profCellData(profId, d, s, schedule);
+      if (singleCls) singleClsFor[`${d}|${s}`] = singleCls;
+      return descriptor;
+    });
+    if (!readOnly) {
+      grid.querySelectorAll('.cell-sched').forEach(td => {
+        const d = +td.dataset.d, s = +td.dataset.s;
+        const cls = singleClsFor[`${d}|${s}`];
+        if (cls) {
+          td.dataset.cls = cls;
+          td.classList.add('swappable');
         }
-      }
-      if (weekABox || weekBBox) return { alt: true, weekA: weekABox, weekB: weekBBox };
-      if (found.length === 0) return null;
-      const pinned = found.some(f => f.cell.pinned);
-      return {
-        top: found[0].cell.subj,
-        bottom: found.map(f => nameOfCls(f.cls)).join(', '),
-        pinned,
-      };
-    }));
+        // Écouteur posé sur TOUTE cellule (y compris vides) : une cellule vide
+        // peut devenir cible d'un échange une fois une source sélectionnée
+        // (voir highlightProfSwapTargets qui lui assigne dataset.cls à la volée).
+        td.addEventListener('click', () => this.handleProfSwapClick(td, profId));
+      });
+    }
+    wrap.appendChild(grid);
     return wrap;
   },
 

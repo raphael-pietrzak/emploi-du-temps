@@ -1,0 +1,119 @@
+3eme
+
+Marie despres anglais
+
+semaine 1
+2h anglais 3h svt
+semaine 2
+4h anglais 3h svt
+
+6eme par semaine
+1.5 svt (semaine 1 1h semaine 2 2h) étude heure manquante
+
+4eme 
+3.5h anglais (semaine 1 3h semaine 2 4h) étude heure manquante
+NOTES — EMPLOI DU TEMPS
+
+1) Données / volumes horaires
+
+Marie Despres — Anglais
+
+3e
+- Semaine 1 : 2h anglais + 3h SVT
+- Semaine 2 : 4h anglais + 3h SVT
+
+6e (par semaine)
+- SVT : 1,5h (semaine 1 : 1h / semaine 2 : 2h)
+- Compléter la 0,5h manquante avec étude si besoin
+
+4e
+- Anglais : 3,5h (semaine 1 : 3h / semaine 2 : 4h)
+- Compléter la 0,5h manquante avec étude si besoin
+
+3e
+- Anglais : 3,5h
+- SVT : 1,5h
+- Les deux s’imbriquent
+
+
+2) Fonctionnement semaine A / semaine B
+
+- Intégrer discrètement le mode semaine A / semaine B
+- Pouvoir ajouter des heures une semaine sur deux
+	- Exemple : SVT 1h semaine A et 2h semaine B
+- Les 0,5h/semaine se complètent (ou avec une heure d’étude)
+- Sur l’emploi du temps global : afficher deux box dans un créneau
+	(pour visualiser discrètement l’alternance A/B)
+
+
+3) Contraintes de placement
+
+Grammaire 5e
+- 2h sur deux jours différents
+- Contrainte principale : jours différents (heures peu importe)
+- Si besoin : ajustement manuel après génération
+
+Exemples actuels :
+- Grammaire — 5e — Lun 10:30–11:20 — Maguelonne de Pierrefeu
+- Grammaire — 5e — Mar 10:30–11:20 — Maguelonne de Pierrefeu
+
+Certaines matières
+- Pouvoir regrouper en bloc
+	- Exemple : 3h/semaine en un seul bloc
+
+Préférence devoirs
+- Soit 2h collées
+- Soit 1h un jour + 1h un autre jour
+
+Mercredi après-midi
+- (point à traiter / vérifier)
+
+
+4) Contraintes de ressources / professeurs
+
+- Regrouper plusieurs professeurs sur un même créneau
+- Ce créneau peut ne concerner aucune classe mais doit être placé
+	- Exemple : Isabelle, Margentine, Maguelonne, Pierre, Sophie,
+		Chanoine dainville (réunion sans classe)
+
+- Impression actuelle : le système semble agir comme s’il y avait trop de
+	professeurs pour une matière, avec choix possible entre eux
+
+
+5) Stratégie de génération
+
+- Autoriser deux types de contraintes :
+	1. Classes regroupées sans horaires précis
+	2. Horaires précis
+
+- Lancer la génération avec ce qui est le plus restrictif :
+	- en nombre d’heures
+	- en nombre de disponibilités sur les créneaux
+
+- Commencer par les disponibilités les plus restrictives
+- Identifier les professeurs « goulots d’étranglement »
+- Pouvoir savoir globalement s’il existe une solution d’emploi du temps
+
+
+6) Règles spécifiques à conserver
+
+- Pouvoir échanger entre classes
+- Bourelly : pas 3h d’affilée pour la même classe
+- Pas 2h de 3e sur les 2 dernières heures du lundi
+- Bénédicte de Saint Palais : 2h d’affilée
+- Inès Lefebvre : grouper si possible ses heures
+- Grammaire : deux jours différents pour une même classe
+Messe pour toutes les classes : 1h de la matinée du Mercredi
+Theatre grouper 6e 5e et grouper 4e 3e
+Maths Lundi Mardi toutes les classes le matin par blocs de 2h
+Sport toute l'ecole (6543) Sophie chevrin et pierre boulard vendredi 2 dernières heures
+
+
+
+
+
+7) Fonctions pratiques
+
+- Enregistrer les versions d’emploi du temps déjà générées
+- Trier alphabétiquement les matières et les professeurs
+

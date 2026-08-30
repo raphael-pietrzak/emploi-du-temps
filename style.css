@@ -518,6 +518,12 @@ input[type="checkbox"] {
   color: inherit; opacity: 0.4; cursor: pointer; font-size: 14px;
 }
 .profs-side li .del:hover { opacity: 1; color: var(--color-text-danger); background: none; }
+.prof-hours { font-size: 11px; color: var(--color-text-secondary); font-weight: 400; }
+.combined-avail-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--color-text-secondary);
+  margin: 6px 0;
+}
 .empty { text-align: center; padding: 60px 20px; color: var(--color-text-muted); font-size: 13px; }
 
 .prof-meta { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
@@ -533,6 +539,7 @@ input[type="checkbox"] {
   border-collapse: separate;
   border-spacing: 3px;
   width: 100%;
+  table-layout: fixed;
   user-select: none;
 }
 .grid-table th, .grid-table td {
@@ -540,8 +547,15 @@ input[type="checkbox"] {
   text-align: center;
   font-size: 12px;
   height: 38px;
-  min-width: 90px;
   border-radius: var(--border-radius-sm);
+}
+/* Colonne "Créneau" : juste assez large pour l'horaire, pas partagée à
+   égalité avec les colonnes de jours — table-layout:fixed répartit le
+   reste de la largeur également entre toutes les colonnes SANS largeur
+   explicite, donc lui seul a besoin d'une largeur fixe ici. */
+.grid-table th:first-child,
+.grid-table td.slot-label {
+  width: 72px;
 }
 /* Créneaux actifs : juste ouvert/fermé par cellule, pas besoin des mêmes
    dimensions que les grilles de dispo/emploi du temps (texte + prof) — des
@@ -571,7 +585,6 @@ input[type="checkbox"] {
   font-family: var(--font-mono);
   font-size: 11px;
   padding: 4px 8px;
-  min-width: 100px;
   text-align: right;
 }
 

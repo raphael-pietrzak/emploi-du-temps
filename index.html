@@ -117,6 +117,14 @@
         <p class="hint">Pour chaque prof, heures qu'il est le SEUL à pouvoir couvrir (matières/regroupements sans autre prof éligible) comparées à sa disponibilité restante. Marge nulle ou négative = configuration fragile ou bloquante, à corriger avant de générer.</p>
         <div id="load-report-container"></div>
       </div>
+
+      <div class="card">
+        <h2>Disponibilités combinées</h2>
+        <p class="hint">Sélectionne plusieurs profs (ex. pour une réunion) : les créneaux où TOUS sont disponibles sont mis en évidence.</p>
+        <label class="combined-avail-toggle"><input type="checkbox" id="combined-avail-use-schedule" checked> Tenir compte de l'emploi du temps actuel (exclure les créneaux déjà occupés)</label>
+        <div id="combined-avail-profs" class="pin-classes"></div>
+        <div id="combined-avail-grid-wrap"></div>
+      </div>
     </section>
 
     <!-- =============== CONSTRAINTS =============== -->
@@ -182,6 +190,7 @@
             <button id="generate-btn" class="primary">Générer l'emploi du temps</button>
             <button id="repair-btn" disabled title="Complète par recherche locale le meilleur essai obtenu (rapide, mais ne peut pas prouver qu'une configuration est impossible).">Réparer</button>
             <button id="copy-btn" title="Copie l'emploi du temps de toutes les classes au format texte (pour le partager ou déboguer).">Copier (texte)</button>
+            <button id="export-captures-btn" title="Exporte un zip avec une image de l'emploi du temps général (les classes) et une image par professeur.">Exporter captures (zip)</button>
             <button id="save-schedule-btn" disabled title="Sauvegarde une copie de l'emploi du temps actuel pour pouvoir y revenir plus tard et comparer.">Sauvegarder cette version</button>
           </div>
           <div class="view-picker">
@@ -204,6 +213,8 @@
   </main>
   <script src="js/storage.js"></script>
   <script src="js/solver.js"></script>
+  <script src="js/zip.js"></script>
+  <script src="js/pdf.js"></script>
   <script src="js/ui/core.js"></script>
   <script src="js/ui/tabs.js"></script>
   <script src="js/ui/io.js"></script>
@@ -211,6 +222,7 @@
   <script src="js/ui/profs.js"></script>
   <script src="js/ui/constraints.js"></script>
   <script src="js/ui/schedule.js"></script>
+  <script src="js/ui/capture.js"></script>
   <script src="js/ui/swap.js"></script>
   <script src="js/app.js"></script>
 </body>
