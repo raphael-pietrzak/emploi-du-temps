@@ -73,7 +73,7 @@ Object.assign(UI, {
           const halfW = dayW / 2;
           [['A', c.weekA, cx], ['B', c.weekB, cx + halfW]].forEach(([tag, box, bx]) => {
             page.text(bx + 3, cy + 8, tag, { size: 6, color: '#888888' });
-            if (box) page.twoLineText(bx, cy + 6, halfW, rowH - 6, box.top, box.bottom, { size1: cellSize ?? 7, size2: (cellSize ?? 7) - 1, minSize: 4.5 });
+            if (box) page.twoLineText(bx, cy + 6, halfW, rowH - 6, box.top, box.bottom, { size1: cellSize ?? 9.5, size2: (cellSize ?? 9.5) - 1, minSize: 4.5 });
           });
           page.line(cx + halfW, cy, cx + halfW, cy + rowH, { stroke: '#999999', lineWidth: 0.5 });
         } else if (c) {
@@ -107,7 +107,7 @@ Object.assign(UI, {
       this.drawScheduleBlock(
         page, MARGIN, yTop, innerW, blockH, 'Classe ' + cls,
         (d, s) => this.cellDescriptor(schedule[`${cls}|${d}|${s}`]),
-        { titleSize: 13, cellSize: 6.5, titleGapBefore: i > 0 }
+        { titleSize: 13, cellSize: 9, titleGapBefore: i > 0 }
       );
     });
   },

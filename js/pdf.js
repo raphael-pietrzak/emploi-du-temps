@@ -98,7 +98,7 @@ const PDFDoc = (() => {
     // Deux lignes centrées comme un bloc, chacune éventuellement dans son
     // propre style (utilisé pour "matière" en gras + "prof" en plus discret).
     twoLineText(x, yTop, w, h, line1, line2, opts = {}) {
-      const { size1 = 8.5, size2 = 7.5, bold1 = true, color1 = '#000000', color2 = '#444444', minSize = 5 } = opts;
+      const { size1 = 11.5, size2 = 10, bold1 = true, color1 = '#000000', color2 = '#444444', minSize = 5 } = opts;
       let s1 = size1;
       while (s1 > minSize && textWidth(line1, s1, bold1) > w - 4) s1 -= 0.5;
       let s2 = line2 ? size2 : 0;
