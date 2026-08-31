@@ -35,6 +35,14 @@ const UI = {
     if (!this.state.volumesB) this.state.volumesB = {};
     if (!this.state.savedSchedules) this.state.savedSchedules = [];
 
+    // Migration : "éviter les trous chez les élèves" (compact) remplacé par
+    // deux leviers indépendants — étaler les classes / grouper les profs —
+    // activés par défaut pour tout état existant qui ne les a pas encore.
+    if (!this.state.options) this.state.options = {};
+    if (this.state.options.spreadForClasses === undefined) this.state.options.spreadForClasses = true;
+    if (this.state.options.noGapsForProfs === undefined) this.state.options.noGapsForProfs = true;
+    delete this.state.options.noGapsForStudents;
+
     // Migration : "jours actifs" (booléen par jour) → "créneaux ouverts"
     // (booléen par jour ET créneau), qui permet de fermer une demi-journée
     // (ex: mercredi après-midi) sans faire semblant que tous les profs sont
@@ -54,6 +62,31 @@ const UI = {
       while (day.length < ns) day.push(true);
       day.length = ns;
     });
+  },
+
+  // Affiche un message de statut dans `el` (className = `${baseClass}` ou
+  // `${baseClass} ${kind}`). Un statut "ok" (succès) s'efface tout seul après
+  // un délai — l'utilisateur veut juste une confirmation furtive, pas un
+  // message qui traîne indéfiniment ; un "err"/"warn" (ou statut neutre,
+  // kind falsy, ex. "en cours…") reste affiché jusqu'au prochain appel.
+  // `el._statusTimer` porte le timer en cours sur l'élément lui-même — un
+  // nouvel appel l'annule d'abord, pour qu'un message plus récent ne se
+  // fasse jamais effacer par le auto-hide d'un message précédent.
+  setStatus(el, kind, text, baseClass = 'status') {
+    if (!el) return;
+    if (el._statusTimer) {
+      clearTimeout(el._statusTimer);
+      el._statusTimer = null;
+    }
+    el.className = kind ? `${baseClass} ${kind}` : baseClass;
+    el.textContent = text;
+    if (kind === 'ok') {
+      el._statusTimer = setTimeout(() => {
+        el.textContent = '';
+        el.className = baseClass;
+        el._statusTimer = null;
+      }, 3000);
+    }
   },
 
   bindEnterToClick(inputId, buttonId) {

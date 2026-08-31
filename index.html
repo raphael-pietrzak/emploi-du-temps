@@ -70,7 +70,8 @@
 
         <div class="card bento-options tone-neutral">
           <h2>Options</h2>
-          <label><input type="checkbox" id="opt-no-gaps"> Éviter les trous dans la journée des élèves</label>
+          <label><input type="checkbox" id="opt-spread-classes"> Étaler les matières des classes sur la semaine</label><br>
+          <label><input type="checkbox" id="opt-no-gaps-profs"> Grouper les horaires des profs</label>
         </div>
       </div>
     </section>
@@ -124,6 +125,10 @@
         <label class="combined-avail-toggle"><input type="checkbox" id="combined-avail-use-schedule" checked> Tenir compte de l'emploi du temps actuel (exclure les créneaux déjà occupés)</label>
         <div id="combined-avail-profs" class="pin-classes"></div>
         <div id="combined-avail-grid-wrap"></div>
+        <div class="combined-avail-actions">
+          <button id="combined-avail-copy-btn">Copier (texte)</button>
+          <span id="combined-avail-copy-status" class="hint"></span>
+        </div>
       </div>
     </section>
 

@@ -73,7 +73,7 @@ const Storage = {
         spread: [],     // { id, subj, classes:[..] } — jamais 2h de cette matière le même jour, pour chaque classe listée
         meetings: [],   // { id, name, profIds:[..] (>=2, tous obligatoires), classes:[..] (0+), hours, subj?: null }
       },
-      options: { noGapsForStudents: true },
+      options: { spreadForClasses: true, noGapsForProfs: true },
     };
   },
 };

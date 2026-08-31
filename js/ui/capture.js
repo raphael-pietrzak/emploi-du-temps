@@ -149,14 +149,12 @@ Object.assign(UI, {
     const status = document.getElementById('solver-status');
     const schedule = this.state.schedule || this.lastPartial?.schedule;
     if (!schedule || Object.keys(schedule).length === 0) {
-      status.className = 'status err';
-      status.textContent = 'Rien à exporter : génère (ou répare) un emploi du temps d\'abord.';
+      this.setStatus(status, 'err', 'Rien à exporter : génère (ou répare) un emploi du temps d\'abord.');
       return;
     }
     const btn = document.getElementById('export-captures-btn');
     btn.disabled = true;
-    status.className = 'status';
-    status.textContent = 'Génération des captures…';
+    this.setStatus(status, null, 'Génération des captures…');
 
     try {
       const files = [];
@@ -187,11 +185,9 @@ Object.assign(UI, {
       document.body.removeChild(a);
       URL.revokeObjectURL(a.href);
 
-      status.className = 'status ok';
-      status.textContent = `Zip exporté : 1 PDF général + ${this.state.profs.length} PDF prof.`;
+      this.setStatus(status, 'ok', `Zip exporté : 1 PDF général + ${this.state.profs.length} PDF prof.`);
     } catch (err) {
-      status.className = 'status err';
-      status.textContent = 'Échec de l\'export des captures : ' + (err?.message || err);
+      this.setStatus(status, 'err', 'Échec de l\'export des captures : ' + (err?.message || err));
     } finally {
       btn.disabled = false;
     }

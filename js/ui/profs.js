@@ -18,6 +18,20 @@ Object.assign(UI, {
       this.renderProfs();
     });
     this.bindEnterToClick('new-prof', 'add-prof');
+
+    document.getElementById('combined-avail-copy-btn').addEventListener('click', () => {
+      const text = this.buildCombinedAvailText();
+      const status = document.getElementById('combined-avail-copy-status');
+      if (!text) {
+        this.setStatus(status, 'err', 'Sélectionne au moins un prof avant de copier.', 'hint status');
+        return;
+      }
+      navigator.clipboard.writeText(text).then(() => {
+        this.setStatus(status, 'ok', 'Disponibilités combinées (texte) copiées dans le presse-papiers.', 'hint status');
+      }).catch(() => {
+        this.setStatus(status, 'err', 'Échec de la copie (presse-papiers refusé par le navigateur).', 'hint status');
+      });
+    });
   },
 
   emptyAvailability() {
@@ -90,6 +104,59 @@ Object.assign(UI, {
   // peinte sur chaque prof, sans tenir compte de l'emploi du temps généré.
   combinedAvailUseSchedule: true,
 
+  combinedAvailIsBusy(profId, d, s) {
+    for (const c of this.state.config.classes) {
+      const cell = this.state.schedule?.[`${c}|${d}|${s}`];
+      if (!cell) continue;
+      if (cell.weekA || cell.weekB) {
+        if (cell.weekA && (cell.weekA.profIds || [cell.weekA.profId]).includes(profId)) return true;
+        if (cell.weekB && (cell.weekB.profIds || [cell.weekB.profId]).includes(profId)) return true;
+      } else if ((cell.profIds || [cell.profId]).includes(profId)) return true;
+    }
+    for (const m of this.state.constraints.meetings || []) {
+      if (m.classes && m.classes.length > 0) continue;
+      const cell = this.state.schedule?.[`@meeting:${m.id}|${d}|${s}`];
+      if (cell && (cell.profIds || [cell.profId]).includes(profId)) return true;
+    }
+    return false;
+  },
+
+  // Texte copiable (presse-papiers) de la grille combinée actuelle — mêmes
+  // règles que le rendu (`renderCombinedAvail`) : mêmes profs sélectionnés,
+  // même prise en compte (ou non) de l'emploi du temps déjà généré. Les
+  // créneaux libres consécutifs d'un même jour sont fusionnés en plage.
+  buildCombinedAvailText() {
+    if (this.combinedAvailSelected.size === 0) return '';
+    const selectedProfs = Array.from(this.combinedAvailSelected)
+      .map(id => this.state.profs.find(p => p.id === id))
+      .filter(Boolean);
+    if (selectedProfs.length === 0) return '';
+
+    const activeDays = this.activeDayIndices();
+    const openSlots = this.state.config.openSlots || [];
+    const useSchedule = this.combinedAvailUseSchedule;
+    const slots = this.state.config.slots;
+
+    let text = `Disponibilités combinées — ${selectedProfs.map(p => p.name).join(', ')}\n`;
+    activeDays.forEach(di => {
+      const ranges = [];
+      let start = null;
+      for (let si = 0; si <= slots.length; si++) {
+        const open = si < slots.length && (openSlots[di] || [])[si] !== false;
+        const free = open && selectedProfs.every(p =>
+          p.availability?.[di]?.[si] && (!useSchedule || !this.combinedAvailIsBusy(p.id, di, si))
+        );
+        if (free && start === null) start = si;
+        if (!free && start !== null) {
+          ranges.push(`${slots[start].start}–${slots[si - 1].end}`);
+          start = null;
+        }
+      }
+      text += `${this.state.config.days[di]}: ${ranges.length ? ranges.join(', ') : '—'}\n`;
+    });
+    return text;
+  },
+
   renderCombinedAvail() {
     const chipsWrap = document.getElementById('combined-avail-profs');
     const gridWrap = document.getElementById('combined-avail-grid-wrap');
@@ -132,22 +199,7 @@ Object.assign(UI, {
 
     const selectedIds = Array.from(this.combinedAvailSelected);
     const selectedProfs = selectedIds.map(id => this.state.profs.find(p => p.id === id)).filter(Boolean);
-    const isBusy = (profId, d, s) => {
-      for (const c of this.state.config.classes) {
-        const cell = this.state.schedule?.[`${c}|${d}|${s}`];
-        if (!cell) continue;
-        if (cell.weekA || cell.weekB) {
-          if (cell.weekA && (cell.weekA.profIds || [cell.weekA.profId]).includes(profId)) return true;
-          if (cell.weekB && (cell.weekB.profIds || [cell.weekB.profId]).includes(profId)) return true;
-        } else if ((cell.profIds || [cell.profId]).includes(profId)) return true;
-      }
-      for (const m of this.state.constraints.meetings || []) {
-        if (m.classes && m.classes.length > 0) continue;
-        const cell = this.state.schedule?.[`@meeting:${m.id}|${d}|${s}`];
-        if (cell && (cell.profIds || [cell.profId]).includes(profId)) return true;
-      }
-      return false;
-    };
+    const isBusy = (profId, d, s) => this.combinedAvailIsBusy(profId, d, s);
 
     const t = document.createElement('table');
     t.className = 'grid-table';

@@ -34,8 +34,12 @@ Object.assign(UI, {
       this.renderConfig();
       this.renderProfEditor();
     });
-    document.getElementById('opt-no-gaps').addEventListener('change', e => {
-      this.state.options.noGapsForStudents = e.target.checked;
+    document.getElementById('opt-spread-classes').addEventListener('change', e => {
+      this.state.options.spreadForClasses = e.target.checked;
+      this.onChange();
+    });
+    document.getElementById('opt-no-gaps-profs').addEventListener('change', e => {
+      this.state.options.noGapsForProfs = e.target.checked;
       this.onChange();
     });
 
@@ -124,7 +128,8 @@ Object.assign(UI, {
     // volumes matrix
     this.renderVolumes();
 
-    document.getElementById('opt-no-gaps').checked = !!this.state.options.noGapsForStudents;
+    document.getElementById('opt-spread-classes').checked = !!this.state.options.spreadForClasses;
+    document.getElementById('opt-no-gaps-profs').checked = !!this.state.options.noGapsForProfs;
 
     // Les contraintes dépendent des matières/classes/slots/jours.
     this.renderConstraints();

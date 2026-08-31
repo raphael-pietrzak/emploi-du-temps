@@ -10,8 +10,7 @@ Object.assign(UI, {
     document.getElementById('generate-btn').addEventListener('click', () => {
       const btn = document.getElementById('generate-btn');
       const status = document.getElementById('solver-status');
-      status.className = 'status';
-      status.textContent = 'Calcul en cours…';
+      this.setStatus(status, null, 'Calcul en cours…');
       btn.disabled = true;
       setTimeout(() => {
         const t0 = performance.now();
@@ -20,14 +19,12 @@ Object.assign(UI, {
         if (res.ok) {
           this.state.schedule = res.schedule;
           this.lastPartial = null;
-          status.className = 'status ok';
-          status.textContent = `${res.message} (${dt}ms)`;
+          this.setStatus(status, 'ok', `${res.message} (${dt}ms)`);
           this.onChange();
         } else {
           this.state.schedule = null;
           this.lastPartial = res.partial || null;
-          status.className = 'status err';
-          status.textContent = res.message;
+          this.setStatus(status, 'err', res.message);
         }
         btn.disabled = false;
         this.viewingSavedId = null;
@@ -40,8 +37,7 @@ Object.assign(UI, {
     document.getElementById('repair-btn').addEventListener('click', () => {
       if (!this.lastPartial || !this.lastPartial.missing.length) return;
       const status = document.getElementById('solver-status');
-      status.className = 'status';
-      status.textContent = 'Réparation en cours (recherche locale)…';
+      this.setStatus(status, null, 'Réparation en cours (recherche locale)…');
       setTimeout(() => {
         const t0 = performance.now();
         const res = Solver.repair(this.state, this.lastPartial);
@@ -49,12 +45,10 @@ Object.assign(UI, {
         if (res.ok) {
           this.state.schedule = res.schedule;
           this.lastPartial = null;
-          status.className = 'status ok';
-          status.textContent = `${res.message} (${dt}ms)`;
+          this.setStatus(status, 'ok', `${res.message} (${dt}ms)`);
           this.onChange();
         } else {
-          status.className = 'status err';
-          status.textContent = `${res.message} (${dt}ms)`;
+          this.setStatus(status, 'err', `${res.message} (${dt}ms)`);
         }
         this.viewingSavedId = null;
         this.updateRepairButton();
@@ -69,16 +63,13 @@ Object.assign(UI, {
       const text = this.buildScheduleText();
       const status = document.getElementById('solver-status');
       if (!text) {
-        status.className = 'status err';
-        status.textContent = 'Rien à copier : génère (ou répare) un emploi du temps d\'abord.';
+        this.setStatus(status, 'err', 'Rien à copier : génère (ou répare) un emploi du temps d\'abord.');
         return;
       }
       navigator.clipboard.writeText(text).then(() => {
-        status.className = 'status ok';
-        status.textContent = 'Emploi du temps (texte) copié dans le presse-papiers.';
+        this.setStatus(status, 'ok', 'Emploi du temps (texte) copié dans le presse-papiers.');
       }).catch(() => {
-        status.className = 'status err';
-        status.textContent = 'Échec de la copie (presse-papiers refusé par le navigateur).';
+        this.setStatus(status, 'err', 'Échec de la copie (presse-papiers refusé par le navigateur).');
       });
     });
 
@@ -155,6 +146,19 @@ Object.assign(UI, {
       });
       actions.appendChild(restoreBtn);
 
+      const renameBtn = document.createElement('button');
+      renameBtn.textContent = 'Renommer';
+      renameBtn.addEventListener('click', () => {
+        const name = prompt('Nouveau nom de cette version :', saved.name);
+        if (name === null) return; // annulé
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        saved.name = trimmed;
+        this.onChange();
+        this.renderSavedSchedules();
+      });
+      actions.appendChild(renameBtn);
+
       const delBtn = document.createElement('button');
       delBtn.textContent = '×';
       delBtn.title = 'Supprimer cette version';
@@ -198,16 +202,47 @@ Object.assign(UI, {
     const blocks = [];
     const renderBlock = (title, keyFor) => {
       const lines = [`=== ${title} ===`];
-      slots.forEach((sl, si) => {
-        activeDays.forEach(di => {
-          lines.push(`${days[di]} ${sl.start}–${sl.end} : ${cellLabel(schedule[keyFor(di, si)])}`);
+      activeDays.forEach(di => {
+        lines.push(`-- ${days[di]} --`);
+        slots.forEach((sl, si) => {
+          lines.push(`${sl.start}–${sl.end} : ${cellLabel(schedule[keyFor(di, si)])}`);
         });
       });
       blocks.push(lines.join('\n'));
     };
 
-    this.state.config.classes.forEach(cls => renderBlock(`Classe ${cls}`, (d, s) => `${cls}|${d}|${s}`));
-    this.meetingsWithoutClass().forEach(m => renderBlock(`Réunion — ${m.name}`, (d, s) => `@meeting:${m.id}|${d}|${s}`));
+    // Ne copie que ce que l'onglet affiche réellement : la vue courante du
+    // sélecteur ("Toutes les classes" / une classe / un prof), pas tout le
+    // planning à chaque fois — sinon le texte copié en vue "Prof X" contient
+    // les autres profs et classes, ce qui n'est pas ce que l'utilisateur voit
+    // à l'écran ni ce qu'il veut coller ailleurs (ex: partager à ce seul prof).
+    const view = document.getElementById('view-select').value;
+    if (view.startsWith('class:')) {
+      const cls = view.slice(6);
+      renderBlock(`Classe ${cls}`, (d, s) => `${cls}|${d}|${s}`);
+    } else if (view.startsWith('prof:')) {
+      const profId = view.slice(5);
+      const prof = this.state.profs.find(p => p.id === profId);
+      const lines = [`=== Prof ${prof ? prof.name : profId} ===`];
+      const boxLabel = box => box ? `${box.top} — ${box.bottom}` : '(libre)';
+      activeDays.forEach(di => {
+        lines.push(`-- ${days[di]} --`);
+        slots.forEach((sl, si) => {
+          const { descriptor } = this.profCellData(profId, di, si, schedule);
+          let label = '(libre)';
+          if (descriptor) {
+            label = descriptor.alt
+              ? `[semaine A] ${boxLabel(descriptor.weekA)}  ·  [semaine B] ${boxLabel(descriptor.weekB)}`
+              : boxLabel(descriptor);
+          }
+          lines.push(`${sl.start}–${sl.end} : ${label}`);
+        });
+      });
+      blocks.push(lines.join('\n'));
+    } else {
+      this.state.config.classes.forEach(cls => renderBlock(`Classe ${cls}`, (d, s) => `${cls}|${d}|${s}`));
+      this.meetingsWithoutClass().forEach(m => renderBlock(`Réunion — ${m.name}`, (d, s) => `@meeting:${m.id}|${d}|${s}`));
+    }
 
     return blocks.join('\n\n');
   },

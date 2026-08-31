@@ -949,18 +949,56 @@ const Solver = {
         const j = Math.floor(Math.random() * (i + 1));
         [cands[i], cands[j]] = [cands[j], cands[i]];
       }
-      if (options.noGapsForStudents) {
-        // Stable : le mélange sert de tie-breaker pour les créneaux à égalité de compacité.
-        cands.sort((a, b) => {
-          const compact = (c) => {
-            let score = 0;
-            for (let s = c.slot - 1; s <= c.slot + 1; s++) {
-              if (s >= 0 && s < slotCount && !freeClass(repCls, c.day, s, sess.week)) score--;
+      if (options.noGapsForProfs || options.spreadForClasses) {
+        // Deux objectifs contraires par construction : compacter l'agenda des
+        // profs (regrouper leurs heures) VS étaler les matières d'une classe
+        // sur des jours différents (pour espacer les devoirs). On les combine
+        // en un seul score signé (plus bas = placé en premier) plutôt que
+        // deux passes de tri séparées, pour que le mélange Fisher-Yates
+        // au-dessus reste le seul tie-breaker sur les candidats réellement
+        // à égalité une fois les deux objectifs pris en compte.
+        // Stable : le mélange sert de tie-breaker pour les créneaux à égalité de score.
+        const classDayLoad = (cls, day) => {
+          let count = 0;
+          for (let s = 0; s < slotCount; s++) {
+            if (busyClassA[cls][day][s] || busyClassB[cls][day][s]) count++;
+          }
+          return count;
+        };
+        const classDaySameSubject = (cls, day, subj) => {
+          let count = 0;
+          for (let s = 0; s < slotCount; s++) {
+            const cell = schedule[`${cls}|${day}|${s}`];
+            if (!cell) continue;
+            if (cell.weekA || cell.weekB) {
+              if (cell.weekA && cell.weekA.subj === subj) count++;
+              if (cell.weekB && cell.weekB.subj === subj) count++;
+            } else if (cell.subj === subj) {
+              count++;
             }
-            return score;
-          };
-          return compact(a) - compact(b);
-        });
+          }
+          return count;
+        };
+        const score = (c) => {
+          let s = 0;
+          if (options.noGapsForProfs) {
+            for (const pid of c.profIds) {
+              for (let sl = c.slot - 1; sl <= c.slot + 1; sl++) {
+                if (sl >= 0 && sl < slotCount && !freeProf(pid, c.day, sl, sess.week)) s--;
+              }
+            }
+          }
+          if (options.spreadForClasses) {
+            // Grosse pénalité si la classe a déjà cette matière ce jour-là,
+            // pénalité plus légère si le jour est déjà chargé pour elle —
+            // pousse le solveur à répartir les heures sur des jours différents
+            // plutôt que de les regrouper.
+            s += classDaySameSubject(repCls, c.day, sess.subj) * 3;
+            s += classDayLoad(repCls, c.day);
+          }
+          return s;
+        };
+        cands.sort((a, b) => score(a) - score(b));
       }
 
       // Retirer idx de "remaining" (swap-pop) pendant qu'on essaie ses candidats.
