@@ -73,6 +73,21 @@ Object.assign(UI, {
     return !!(cell.pinned || cell.meeting || cell.weekA || cell.weekB);
   },
 
+  // Vrai si `cell` occupe profId, à N'IMPORTE QUELLE semaine — y compris une
+  // cellule alternante (weekA/weekB) dont le prof n'est PAS exposé au niveau
+  // plat (cell.profId) mais sous cell.weekA.profId / cell.weekB.profId. Une
+  // session déplacée par un swap est toujours 'both' (les cellules weekA/
+  // weekB elles-mêmes ne peuvent pas être déplacées, cf isLocked), donc elle
+  // couvrirait les DEUX semaines à la nouvelle position : un conflit sur une
+  // seule semaine (A seule ou B seule) chez une autre classe suffit déjà à
+  // bloquer l'échange. Sans ce contrôle, un swap pouvait mettre le même prof
+  // sur deux classes différentes au même créneau une semaine A ou B donnée.
+  cellOccupiesProf(cell, profId) {
+    if (!cell) return false;
+    const has = (c) => !!c && ((c.profIds && c.profIds.includes(profId)) || c.profId === profId);
+    return has(cell) || has(cell.weekA) || has(cell.weekB);
+  },
+
   // Cherche comment rendre possible l'échange (clsA,d1,s1) ↔ (clsB,d2,s2)
   // quand canSwap le refuse directement : identifie les sessions qui
   // bloquent (une AUTRE session de clsA/clsB déjà présente à la position
@@ -115,7 +130,7 @@ Object.assign(UI, {
     for (const c of this.state.config.classes) {
       if (c === clsA || c === clsB) continue;
       const cell = this.state.schedule[`${c}|${d2}|${s2}`];
-      if (cell && (cell.profIds || [cell.profId]).includes(profA.id)) {
+      if (this.cellOccupiesProf(cell, profA.id)) {
         if (!collect(c, d2, s2)) return { ok: false, reason: `${profA.name} est déjà occupé ailleurs à ce créneau par une session verrouillée.` };
       }
     }
@@ -127,7 +142,7 @@ Object.assign(UI, {
       for (const c of this.state.config.classes) {
         if (c === clsA || c === clsB) continue;
         const cell = this.state.schedule[`${c}|${d1}|${s1}`];
-        if (cell && (cell.profIds || [cell.profId]).includes(profB.id)) {
+        if (this.cellOccupiesProf(cell, profB.id)) {
           if (!collect(c, d1, s1)) return { ok: false, reason: `${profB.name} est déjà occupé ailleurs à ce créneau par une session verrouillée.` };
         }
       }
@@ -181,7 +196,7 @@ Object.assign(UI, {
         for (const c of this.state.config.classes) {
           if (c === cls) continue;
           const other = this.state.schedule[`${c}|${d}|${s}`];
-          if (other && (other.profIds || [other.profId]).includes(prof.id)) { busy = true; break; }
+          if (this.cellOccupiesProf(other, prof.id)) { busy = true; break; }
         }
         if (busy) continue;
         return { d, s };
@@ -248,7 +263,7 @@ Object.assign(UI, {
     for (const c of this.state.config.classes) {
       if (c === clsB || c === clsA) continue;
       const cell = this.state.schedule[`${c}|${d2}|${s2}`];
-      if (cell && cell.profId === profA.id) return false;
+      if (this.cellOccupiesProf(cell, profA.id)) return false;
     }
 
     if (b) {
@@ -257,7 +272,7 @@ Object.assign(UI, {
       for (const c of this.state.config.classes) {
         if (c === clsA || c === clsB) continue;
         const cell = this.state.schedule[`${c}|${d1}|${s1}`];
-        if (cell && cell.profId === profB.id) return false;
+        if (this.cellOccupiesProf(cell, profB.id)) return false;
       }
     }
     return true;
@@ -268,7 +283,7 @@ Object.assign(UI, {
   // une cellule vide n'a pas de classe associée dans CETTE vue (le prof est
   // juste libre) — highlightProfSwapTargets le résout dynamiquement.
   handleProfSwapClick(td, profId) {
-    const cls = td.dataset.cls;
+    const cls = td.dataset.cls || td.dataset.swapCls;
     const d = +td.dataset.d, s = +td.dataset.s;
     const key = `${cls}|${d}|${s}`;
     const cell = this.state.schedule[key];
@@ -352,7 +367,14 @@ Object.assign(UI, {
         match = clsA;
       }
       if (match) {
-        td.dataset.cls = match; // fige la classe cible pour le clic suivant
+        // Attribut dédié (jamais dataset.cls, réservé aux vraies sessions posées
+        // au rendu) : sinon la mutation persiste sur ce <td> après annulation
+        // (clearSwapHighlight ne touchait pas dataset.cls) et pollue la
+        // recherche de cible au prochain essai — un ancien match figé sur une
+        // case en réalité vide se faisait alors passer pour "le prof y enseigne
+        // déjà", court-circuitant le vrai calcul cross-classe et ne laissant
+        // plus apparaître que les échanges de la même classe.
+        td.dataset.swapCls = match; // fige la classe cible pour le clic suivant
         td.classList.add('swap-target');
       }
     });
@@ -428,13 +450,13 @@ Object.assign(UI, {
       // directement sous la clé de la classe comme une session normale).
       for (const c of this.state.config.classes) {
         const cell = this.state.schedule[`${c}|${d2}|${s2}`];
-        if (cell && (cell.profIds || [cell.profId]).includes(profId)) return false;
+        if (this.cellOccupiesProf(cell, profId)) return false;
       }
       // Autres réunions SANS classe (clé fictive "@meeting:<id>").
       for (const m of this.state.constraints.meetings || []) {
         if (m.id === meeting.id || (m.classes && m.classes.length > 0)) continue;
         const cell = this.state.schedule[`@meeting:${m.id}|${d2}|${s2}`];
-        if (cell && (cell.profIds || [cell.profId]).includes(profId)) return false;
+        if (this.cellOccupiesProf(cell, profId)) return false;
       }
     }
     return true;
@@ -443,6 +465,7 @@ Object.assign(UI, {
   clearSwapHighlight() {
     document.querySelectorAll('.swap-selected, .swap-target').forEach(el => {
       el.classList.remove('swap-selected', 'swap-target');
+      delete el.dataset.swapCls;
     });
   },
 });
