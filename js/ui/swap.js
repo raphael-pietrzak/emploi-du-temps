@@ -46,6 +46,7 @@ Object.assign(UI, {
 
     this.performSwap(this._swap.cls, this._swap.d, this._swap.s, cls, d, s);
     this._swap = null;
+    this.bumpVersion('minor');
     this.onChange();
     this.renderSchedule();
   },
@@ -60,6 +61,7 @@ Object.assign(UI, {
       alert(`Échange impossible : ${res.reason}`);
       return;
     }
+    this.bumpVersion('minor');
     this.onChange();
     this.renderSchedule();
     if (res.relocated.length) {
@@ -328,6 +330,7 @@ Object.assign(UI, {
 
     this.performSwap(this._swap.cls, this._swap.d, this._swap.s, cls, d, s);
     this._swap = null;
+    this.bumpVersion('minor');
     this.onChange();
     this.renderSchedule();
   },
@@ -417,6 +420,7 @@ Object.assign(UI, {
     delete this.state.schedule[aKey];
     this.state.schedule[key] = a;
     this._swap = null;
+    this.bumpVersion('minor');
     this.onChange();
     this.renderSchedule();
   },

@@ -66,7 +66,13 @@ const Storage = {
       volumesA: {}, // "classe|matiere" -> heures EN PLUS, uniquement les semaines A
       volumesB: {}, // "classe|matiere" -> heures EN PLUS, uniquement les semaines B
       schedule: null,
-      savedSchedules: [], // [{ id, name, date, schedule, message }] — versions gardées de côté pour comparer, jamais écrasées par une nouvelle génération
+      // Numéro de version auto-incrémenté (affiché "vMAJOR.MINOR") : major++
+      // (et minor remis à 0) à chaque nouvelle génération/réparation, minor++
+      // à chaque modification manuelle (échange de cellules) — voir
+      // UI.bumpVersion. Sert de nom par défaut aux versions sauvegardées et
+      // aux exports (js/ui/schedule.js, js/ui/capture.js).
+      version: { major: 0, minor: 0 },
+      savedSchedules: [], // [{ id, name, date, schedule, message, version }] — versions gardées de côté pour comparer, jamais écrasées par une nouvelle génération
       constraints: {
         pins: [],       // { id, subj, classes:[..], day, slot, profId?: null }
         groups: [],     // { id, subj, classes:[..] (>=2), hours, profId?: null } — regroupées, mais sans jour/créneau imposé

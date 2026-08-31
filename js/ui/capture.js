@@ -22,6 +22,11 @@ const BREAK_ROW_H = 15;
 // interclasse courte (ex: 10:10→10:25, 15min) sans dépendre des horaires
 // exacts d'un établissement donné.
 const BREAK_THRESHOLD_MIN = 40;
+// Matières dont le nom du prof ne doit jamais apparaître dans les PDF
+// exportés (vue par classe) — ex. "Messe" : le prof qui accompagne n'a pas
+// à être imprimé/affiché publiquement. N'affecte que capture.js ; la vue
+// à l'écran (schedule.js) garde le nom pour l'édition/le swap.
+const HIDE_PROF_SUBJECTS = new Set(['Messe']);
 function parseTimeToMin(t) {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
@@ -134,15 +139,45 @@ Object.assign(UI, {
       const yTop = MARGIN + i * blockH;
       this.drawScheduleBlock(
         page, MARGIN, yTop, innerW, blockH, 'Classe ' + cls,
-        (d, s) => this.cellDescriptor(schedule[`${cls}|${d}|${s}`]),
+        (d, s) => this.captureCellDescriptor(schedule[`${cls}|${d}|${s}`]),
         { titleSize: 13, cellSize: 9, titleGapBefore: i > 0 }
       );
     });
   },
 
+  // Comme cellDescriptor, mais efface le nom du prof (bottom) pour les
+  // matières de HIDE_PROF_SUBJECTS — seul cellFor passé à drawScheduleBlock
+  // pour une vue par classe doit passer par ici, jamais profCellData (dont
+  // le "bottom" est déjà le nom de la classe, pas un prof).
+  captureCellDescriptor(cell) {
+    const desc = this.cellDescriptor(cell);
+    if (!desc) return desc;
+    if (desc.alt) {
+      ['weekA', 'weekB'].forEach(k => {
+        if (desc[k] && HIDE_PROF_SUBJECTS.has(desc[k].top)) desc[k] = { ...desc[k], bottom: '' };
+      });
+      return desc;
+    }
+    if (HIDE_PROF_SUBJECTS.has(desc.top)) return { ...desc, bottom: '' };
+    return desc;
+  },
+
   captureSafeFilename(s) {
     return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'sans-nom';
+  },
+
+  // Déclenche le téléchargement d'un Blob sous `filename` via un <a> éphémère
+  // — même mécanique que le zip et le PDF A3, factorisée pour ne pas la
+  // dupliquer trois fois.
+  triggerDownload(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
   },
 
   async exportCapturesZip() {
@@ -152,6 +187,15 @@ Object.assign(UI, {
       this.setStatus(status, 'err', 'Rien à exporter : génère (ou répare) un emploi du temps d\'abord.');
       return;
     }
+    // Nom automatique : celui de la version sauvegardée actuellement
+    // consultée (ex. "v3.3"), sinon le numéro de version auto-incrémenté
+    // courant (bumpVersion, voir core.js) — pas besoin de le retaper, le zip
+    // ET le PDF A3 reprennent tous les deux ce même nom.
+    const savedViewing = this.viewingSavedId
+      ? this.state.savedSchedules.find(s => s.id === this.viewingSavedId)
+      : null;
+    const safeName = this.captureSafeFilename(savedViewing?.name || this.versionName());
+
     const btn = document.getElementById('export-captures-btn');
     btn.disabled = true;
     this.setStatus(status, null, 'Génération des captures…');
@@ -159,10 +203,14 @@ Object.assign(UI, {
     try {
       const files = [];
 
+      const combinedDoc = new PDFDoc.Doc();
+      this.buildCombinedClassesPage(combinedDoc, this.state.config.classes, schedule);
+      const combinedPdfData = combinedDoc.build();
+
       const generalDoc = new PDFDoc.Doc();
       this.buildCombinedClassesPage(generalDoc, this.state.config.classes, schedule);
       this.state.config.classes.forEach(cls => {
-        this.buildScheduleTablePage(generalDoc, 'Classe ' + cls, (d, s) => this.cellDescriptor(schedule[`${cls}|${d}|${s}`]));
+        this.buildScheduleTablePage(generalDoc, 'Classe ' + cls, (d, s) => this.captureCellDescriptor(schedule[`${cls}|${d}|${s}`]));
       });
       this.meetingsWithoutClass().forEach(m => {
         const pseudoKey = `@meeting:${m.id}`;
@@ -177,15 +225,10 @@ Object.assign(UI, {
       });
 
       const zipBlob = Zip.build(files);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(zipBlob);
-      a.download = `captures-emploi-du-temps-${new Date().toISOString().slice(0, 10)}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(a.href);
+      this.triggerDownload(zipBlob, `${safeName}.zip`);
+      this.triggerDownload(new Blob([combinedPdfData], { type: 'application/pdf' }), `${safeName}.pdf`);
 
-      this.setStatus(status, 'ok', `Zip exporté : 1 PDF général + ${this.state.profs.length} PDF prof.`);
+      this.setStatus(status, 'ok', `Export réalisé : ${safeName}.zip (1 PDF général + ${this.state.profs.length} PDF prof) et ${safeName}.pdf (page A3).`);
     } catch (err) {
       this.setStatus(status, 'err', 'Échec de l\'export des captures : ' + (err?.message || err));
     } finally {

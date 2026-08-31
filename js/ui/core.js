@@ -34,6 +34,7 @@ const UI = {
     if (!this.state.volumesA) this.state.volumesA = {};
     if (!this.state.volumesB) this.state.volumesB = {};
     if (!this.state.savedSchedules) this.state.savedSchedules = [];
+    if (!this.state.version) this.state.version = { major: this.state.savedSchedules.length, minor: 0 };
 
     // Migration : "éviter les trous chez les élèves" (compact) remplacé par
     // deux leviers indépendants — étaler les classes / grouper les profs —
@@ -64,6 +65,26 @@ const UI = {
     });
   },
 
+  // `kind: 'major'` = nouvelle génération/réparation (major++, minor remis à
+  // 0) ; `kind: 'minor'` = modification manuelle de l'emploi du temps déjà
+  // généré (échange de cellules). Pas de bump si l'emploi du temps n'existe
+  // pas encore (ex. tentative de génération échouée) — une version ne
+  // commence à exister que lorsqu'il y a un schedule réel derrière.
+  bumpVersion(kind) {
+    if (!this.state.schedule) return;
+    if (kind === 'major') {
+      this.state.version.major++;
+      this.state.version.minor = 0;
+    } else {
+      this.state.version.minor++;
+    }
+  },
+
+  versionName() {
+    const { major, minor } = this.state.version;
+    return `v${major}.${minor}`;
+  },
+
   // Affiche un message de statut dans `el` (className = `${baseClass}` ou
   // `${baseClass} ${kind}`). Un statut "ok" (succès) s'efface tout seul après
   // un délai — l'utilisateur veut juste une confirmation furtive, pas un
@@ -85,8 +106,18 @@ const UI = {
         el.textContent = '';
         el.className = baseClass;
         el._statusTimer = null;
-      }, 3000);
+      }, 1500);
     }
+  },
+
+  // Rendu commun de la colonne "Créneau" des tableaux grille (dispos,
+  // créneaux ouverts, emploi du temps) : début et fin empilés sur deux
+  // lignes plutôt qu'un "08:20 – 09:20" sur une seule ligne, qui wrappait au
+  // milieu du tiret dans une colonne étroite ("08:20 –" puis "09:20" en
+  // dessous, coupure moche) — voir `.grid-table td.slot-label` en CSS pour
+  // l'empilement proprement dit.
+  slotLabelHtml(sl) {
+    return `<span class="slot-start">${sl.start}</span><span class="slot-end">${sl.end}</span>`;
   },
 
   bindEnterToClick(inputId, buttonId) {

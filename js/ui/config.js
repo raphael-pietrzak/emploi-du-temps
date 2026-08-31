@@ -160,7 +160,7 @@ Object.assign(UI, {
     days.forEach(d => html += `<th>${d}</th>`);
     html += '</tr></thead><tbody>';
     slots.forEach((sl, si) => {
-      html += `<tr><td class="slot-label">${sl.start} – ${sl.end}</td>`;
+      html += `<tr><td class="slot-label">${this.slotLabelHtml(sl)}</td>`;
       days.forEach((_, di) => {
         const on = openSlots[di][si];
         html += `<td class="cell-avail ${on ? 'on' : ''}" data-d="${di}" data-s="${si}"></td>`;

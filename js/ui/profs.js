@@ -72,8 +72,8 @@ Object.assign(UI, {
       const li = document.createElement('li');
       if (p.id === this.selectedProfId) li.classList.add('selected');
       const hrs = this.profScheduledHours(p.id);
-      const hrsTxt = hrs === null ? '' : ` <span class="prof-hours">${hrs}h</span>`;
-      li.innerHTML = `<span>${p.name}${hrsTxt}</span><button class="del" title="Supprimer">×</button>`;
+      const hrsTxt = hrs === null ? '' : `<span class="prof-hours">${hrs}h</span>`;
+      li.innerHTML = `<span class="prof-name">${p.name}</span><span class="prof-row-end">${hrsTxt}<button class="del" title="Supprimer">×</button></span>`;
       li.addEventListener('click', e => {
         if (e.target.classList.contains('del')) return;
         this.selectedProfId = p.id;
@@ -211,7 +211,7 @@ Object.assign(UI, {
     });
     html += '</tr></thead><tbody>';
     this.state.config.slots.forEach((sl, si) => {
-      html += `<tr><td class="slot-label">${sl.start} – ${sl.end}</td>`;
+      html += `<tr><td class="slot-label">${this.slotLabelHtml(sl)}</td>`;
       this.state.config.days.forEach((_, di) => {
         if (!activeDays.has(di)) return;
         const open = (openSlots[di] || [])[si] !== false;
@@ -398,7 +398,7 @@ Object.assign(UI, {
     });
     html += '</tr></thead><tbody>';
     this.state.config.slots.forEach((sl, si) => {
-      html += `<tr><td class="slot-label">${sl.start} – ${sl.end}</td>`;
+      html += `<tr><td class="slot-label">${this.slotLabelHtml(sl)}</td>`;
       this.state.config.days.forEach((_, di) => {
         if (!activeDays.has(di)) return;
         if (isClosed(di, si)) {

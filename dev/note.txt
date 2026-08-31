@@ -117,3 +117,6 @@ Sport toute l'ecole (6543) Sophie chevrin et pierre boulard vendredi 2 dernière
 - Enregistrer les versions d’emploi du temps déjà générées
 - Trier alphabétiquement les matières et les professeurs
 
+
+
+

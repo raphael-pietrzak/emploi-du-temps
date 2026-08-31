@@ -19,6 +19,7 @@ Object.assign(UI, {
         if (res.ok) {
           this.state.schedule = res.schedule;
           this.lastPartial = null;
+          this.bumpVersion('major');
           this.setStatus(status, 'ok', `${res.message} (${dt}ms)`);
           this.onChange();
         } else {
@@ -45,6 +46,7 @@ Object.assign(UI, {
         if (res.ok) {
           this.state.schedule = res.schedule;
           this.lastPartial = null;
+          this.bumpVersion('major');
           this.setStatus(status, 'ok', `${res.message} (${dt}ms)`);
           this.onChange();
         } else {
@@ -73,25 +75,7 @@ Object.assign(UI, {
       });
     });
 
-    document.getElementById('save-schedule-btn').addEventListener('click', () => {
-      if (!this.state.schedule) return;
-      if (this.state.savedSchedules.length >= MAX_SAVED_SCHEDULES) {
-        alert(`Limite de ${MAX_SAVED_SCHEDULES} versions atteinte — supprime-en une avant d'en sauvegarder une nouvelle.`);
-        return;
-      }
-      const defaultName = new Date().toLocaleString('fr', { dateStyle: 'short', timeStyle: 'short' });
-      const name = prompt('Nom de cette version :', defaultName);
-      if (name === null) return; // annulé
-      this.state.savedSchedules.push({
-        id: 'saved_' + Date.now(),
-        name: name.trim() || defaultName,
-        date: new Date().toISOString(),
-        schedule: this.state.schedule,
-        message: document.getElementById('solver-status').textContent,
-      });
-      this.onChange();
-      this.renderSavedSchedules();
-    });
+    document.getElementById('save-schedule-btn').addEventListener('click', () => this.saveCurrentSchedule());
 
     this.updateRepairButton();
     this.updateSaveButton();
@@ -102,6 +86,33 @@ Object.assign(UI, {
     const btn = document.getElementById('save-schedule-btn');
     if (!btn) return;
     btn.disabled = !this.state.schedule;
+  },
+
+  saveCurrentSchedule() {
+    if (!this.state.schedule) return;
+    if (this.state.savedSchedules.length >= MAX_SAVED_SCHEDULES) {
+      alert(`Limite de ${MAX_SAVED_SCHEDULES} versions atteinte — supprime-en une avant d'en sauvegarder une nouvelle.`);
+      return;
+    }
+    const defaultName = this.versionName();
+    const name = prompt('Nom de cette version :', defaultName);
+    if (name === null) return; // annulé
+    this.state.savedSchedules.push({
+      id: 'saved_' + Date.now(),
+      name: name.trim() || defaultName,
+      date: new Date().toISOString(),
+      // Copie profonde : le swap de cellules (swap.js) mute state.schedule
+      // EN PLACE (delete/assign de clés sur le même objet) — garder juste la
+      // référence ici ferait dériver silencieusement la version "sauvegardée"
+      // au fil des échanges suivants, ce qui invaliderait tout l'intérêt
+      // d'une sauvegarde figée.
+      schedule: JSON.parse(JSON.stringify(this.state.schedule)),
+      version: { ...this.state.version },
+      message: document.getElementById('solver-status').textContent,
+    });
+    this.onChange();
+    this.renderSavedSchedules();
+    this.renderSchedule();
   },
 
   renderSavedSchedules() {
@@ -135,7 +146,11 @@ Object.assign(UI, {
       restoreBtn.title = 'Remplace l\'emploi du temps actuel par cette version';
       restoreBtn.addEventListener('click', () => {
         if (!confirm(`Remplacer l'emploi du temps actuel par "${saved.name}" ?`)) return;
-        this.state.schedule = saved.schedule;
+        // Copie profonde, même raison que saveCurrentSchedule() : sans ça,
+        // un swap ultérieur sur l'emploi du temps restauré muterait aussi la
+        // version sauvegardée d'origine (même objet en mémoire).
+        this.state.schedule = JSON.parse(JSON.stringify(saved.schedule));
+        if (saved.version) this.state.version = { ...saved.version };
         this.lastPartial = null;
         this.viewingSavedId = null;
         this.onChange();
@@ -274,29 +289,78 @@ Object.assign(UI, {
     cont.innerHTML = '';
     const view = sel.value;
 
+    // Bandeau tout en haut de l'onglet (au-dessus des boutons Générer/Copier/
+    // Sauvegarder) : seul indicateur permanent, visible sans avoir à scroller
+    // jusqu'à la liste des versions, qu'on regarde une version sauvegardée
+    // plutôt que l'emploi du temps actuel — sinon rien ne distingue "je
+    // consulte une ancienne version" de "je dois la sauvegarder maintenant".
+    const savedBanner = document.getElementById('viewing-saved-banner');
+    const viewingSaved = this.viewingSavedId
+      ? this.state.savedSchedules.find(s => s.id === this.viewingSavedId)
+      : null;
+    if (this.viewingSavedId && !viewingSaved) this.viewingSavedId = null; // référence caduque (version supprimée)
+    if (viewingSaved) {
+      savedBanner.hidden = false;
+      savedBanner.innerHTML = '';
+      savedBanner.classList.remove('is-saved');
+      const txt = document.createElement('span');
+      txt.textContent = `Vous consultez la version sauvegardée « ${viewingSaved.name} » (lecture seule) — ce n'est pas l'emploi du temps actuel.`;
+      savedBanner.appendChild(txt);
+      const backBtn = document.createElement('button');
+      backBtn.textContent = 'Revenir à l\'actuel';
+      backBtn.addEventListener('click', () => {
+        this.viewingSavedId = null;
+        this.renderSchedule();
+        this.renderSavedSchedules();
+      });
+      savedBanner.appendChild(backBtn);
+    } else if (this.state.schedule) {
+      // Pas en train de consulter une ancienne version en lecture seule :
+      // l'emploi du temps affiché EST l'actuel. Reste à dire si son contenu
+      // correspond exactement à une version déjà sauvegardée (comparaison
+      // profonde — pas par référence, cf. saveCurrentSchedule) ou s'il a
+      // divergé depuis (généré à nouveau, réparé, ou modifié par un swap),
+      // pour qu'on sache d'un coup d'œil s'il faut penser à sauvegarder.
+      const currentJson = JSON.stringify(this.state.schedule);
+      const match = this.state.savedSchedules.find(s => JSON.stringify(s.schedule) === currentJson);
+      savedBanner.hidden = false;
+      savedBanner.innerHTML = '';
+      const txt = document.createElement('span');
+      if (match) {
+        savedBanner.classList.add('is-saved');
+        txt.textContent = `Version actuelle = version sauvegardée « ${match.name} ».`;
+      } else {
+        savedBanner.classList.remove('is-saved');
+        txt.textContent = 'Version actuelle non sauvegardée (modifiée depuis la dernière sauvegarde, ou jamais sauvegardée).';
+      }
+      savedBanner.appendChild(txt);
+      if (!match) {
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Sauvegarder cette version';
+        saveBtn.addEventListener('click', () => this.saveCurrentSchedule());
+        savedBanner.appendChild(saveBtn);
+      }
+    } else {
+      savedBanner.hidden = true;
+      savedBanner.innerHTML = '';
+      savedBanner.classList.remove('is-saved');
+    }
+
     // Consultation d'une version sauvegardée : prioritaire sur tout le reste,
     // toujours en lecture seule (le swap suppose qu'on édite state.schedule,
     // pas un instantané figé) — l'utilisateur doit explicitement "Restaurer"
     // pour la rendre éditable.
-    if (this.viewingSavedId) {
-      const saved = this.state.savedSchedules.find(s => s.id === this.viewingSavedId);
-      if (saved) {
-        const banner = document.createElement('p');
-        banner.className = 'hint partial-banner';
-        banner.textContent = `Consultation de "${saved.name}" (lecture seule) — ceci n'est pas l'emploi du temps actuel.`;
-        cont.appendChild(banner);
-        const schedule = saved.schedule;
-        if (view.startsWith('prof:')) {
-          cont.appendChild(this.buildProfGrid(view.slice(5), schedule, true));
-        } else if (view.startsWith('class:')) {
-          cont.appendChild(this.buildClassBlock(view.slice(6), schedule, true));
-        } else {
-          this.state.config.classes.forEach(cls => cont.appendChild(this.buildClassBlock(cls, schedule, true)));
-          this.meetingsWithoutClass().forEach(m => cont.appendChild(this.buildMeetingBlock(m, schedule)));
-        }
-        return;
+    if (viewingSaved) {
+      const schedule = viewingSaved.schedule;
+      if (view.startsWith('prof:')) {
+        cont.appendChild(this.buildProfGrid(view.slice(5), schedule, true));
+      } else if (view.startsWith('class:')) {
+        cont.appendChild(this.buildClassBlock(view.slice(6), schedule, true));
+      } else {
+        this.state.config.classes.forEach(cls => cont.appendChild(this.buildClassBlock(cls, schedule, true)));
+        this.meetingsWithoutClass().forEach(m => cont.appendChild(this.buildMeetingBlock(m, schedule)));
       }
-      this.viewingSavedId = null; // référence caduque (version supprimée) : on retombe sur l'état courant
+      return;
     }
 
     if (this.state.schedule) {
@@ -490,7 +554,7 @@ Object.assign(UI, {
     html += '</tr></thead><tbody>';
     const openSlots = this.state.config.openSlots || [];
     this.state.config.slots.forEach((sl, si) => {
-      html += `<tr><td class="slot-label">${sl.start}–${sl.end}</td>`;
+      html += `<tr><td class="slot-label">${this.slotLabelHtml(sl)}</td>`;
       this.state.config.days.forEach((_, di) => {
         if (!activeDays.has(di)) return;
         const open = (openSlots[di] || [])[si] !== false;
