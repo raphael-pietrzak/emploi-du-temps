@@ -17,6 +17,7 @@ const UI = {
     this.bindConstraints();
     this.bindSchedule();
     this.bindCapture();
+    this.bindIcs();
     this.renderAll();
   },
 
