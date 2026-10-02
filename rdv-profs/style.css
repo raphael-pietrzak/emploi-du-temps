@@ -1,0 +1,204 @@
+/* Styles propres à l'app RDV, au-dessus du thème de style.css (variables
+   --color-*, --border-radius-*, --font-sans partagées avec emploi-du-temps). */
+
+header { justify-content: flex-start; }
+
+.add-prof-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 0.5px dashed var(--color-border-secondary);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+}
+.add-prof-btn:hover {
+  opacity: 1;
+  border-color: var(--color-border-info);
+  color: var(--color-text-info);
+  background: var(--button-hover);
+}
+
+.tabs-list {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
+  padding: 3px;
+}
+
+.tab-btn { cursor: grab; }
+.tab-btn.dragging { opacity: 0.4; cursor: grabbing; }
+.tab-btn.drag-over { box-shadow: inset 2px 0 0 var(--color-border-info); }
+
+.tab-btn .del-x {
+  margin-left: 8px;
+  opacity: 0.5;
+}
+.tab-btn .del-x:hover { opacity: 1; color: var(--color-text-danger); }
+
+.new-prof-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.new-prof-inline input { width: 160px; }
+
+.empty { text-align: center; padding: 60px 20px; color: var(--color-text-muted); font-size: 13px; }
+
+.prof-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .prof-layout { grid-template-columns: 1fr; }
+}
+
+.identity-panel { position: sticky; top: 70px; }
+.identity-panel input { width: 100%; }
+.identity-hint {
+  font-size: 12px;
+  color: var(--color-text-danger);
+  margin-top: 8px;
+  display: none;
+}
+.identity-hint.show { display: block; }
+
+.main-panel h2 { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+
+.edit-slots-link {
+  background: none;
+  border: none;
+  color: var(--color-text-info);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  margin-bottom: 16px;
+}
+.edit-slots-link:hover { background: none; text-decoration: underline; }
+
+/* ---- Booking view ---- */
+.day-block { margin-bottom: 20px; }
+.day-title {
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  margin-bottom: 10px;
+}
+.slot-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.slot-chip { position: relative; }
+.slot-chip input[type=checkbox] {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.slot-chip label {
+  display: block;
+  min-width: 72px;
+  text-align: center;
+  padding: 8px 10px;
+  border-radius: var(--border-radius-sm);
+  border: 0.5px solid var(--input-border);
+  background: var(--color-background-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.12s ease;
+}
+.slot-chip label .taken-name {
+  display: block;
+  font-size: 10px;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+.slot-chip input:checked + label {
+  background: var(--color-background-info);
+  border-color: var(--color-border-info);
+  color: var(--color-text-info);
+}
+.slot-chip.taken-other label {
+  background: var(--color-background-tertiary);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+.slot-chip.taken-other input { cursor: not-allowed; }
+.slot-chip:not(.taken-other):not(.disabled) label:hover {
+  border-color: var(--color-border-info);
+}
+.slot-chip.disabled label { opacity: 0.5; cursor: not-allowed; }
+
+.no-slots-msg { color: var(--color-text-muted); font-size: 13px; }
+
+/* ---- Agenda / grid editor ---- */
+.editor-toolbar {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
+}
+.editor-toolbar .field { display: flex; flex-direction: column; gap: 4px; }
+.editor-toolbar label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.editor-toolbar input, .editor-toolbar select { width: 90px; }
+
+.editor-hint { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 14px; }
+
+.grid-wrap { overflow-x: auto; }
+.agenda-grid { border-collapse: collapse; user-select: none; }
+.agenda-grid th {
+  padding: 4px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  min-width: 66px;
+  position: sticky;
+  top: 0;
+  background: var(--color-background-primary);
+}
+.agenda-grid td.time-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  text-align: right;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+.agenda-cell {
+  width: 66px;
+  height: 18px;
+  border: 0.5px solid var(--color-border-tertiary);
+  background: var(--color-background-secondary);
+  cursor: pointer;
+}
+.agenda-cell:hover { background: var(--color-background-tertiary); }
+.agenda-cell.selected {
+  background: var(--color-background-info);
+  border-color: var(--color-border-info);
+}
+.agenda-cell.existing-booked {
+  background: var(--color-background-warning);
+  border-color: var(--color-border-danger, var(--color-border-info));
+}
+
+.editor-actions { display: flex; gap: 10px; margin-top: 16px; }
